@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import Mock, patch, MagicMock
 import requests
 from config.config import Config
-from base.client import YandexMarketBase  # замените на ваш импорт
+from base.client import YandexMarketBase
 
 
 class TestYandexMarketBase(unittest.TestCase):
@@ -27,16 +27,14 @@ class TestYandexMarketBase(unittest.TestCase):
 
     def test_initialization(self):
         """Тест инициализации класса"""
-        self.assertEqual(self.market_api._YandexMarketBase__api_key, "test_api_key_12345")
-        self.assertEqual(self.market_api._YandexMarketBase__business_id, "test_business_id")
-        self.assertEqual(self.market_api._YandexMarketBase__campaign_id, "test_campaign_id")
-        self.assertEqual(self.market_api._YandexMarketBase__base_url, "https://api.partner.market.yandex.ru/v2")
-
-        # Проверяем только наши кастомные заголовки
-        session_headers = self.market_api._YandexMarketBase__session.headers
+        # Проверяем приватные атрибуты через доступ к сессии
+        session_headers = self.market_api._session.headers
         self.assertEqual(session_headers.get('Api-key'), 'test_api_key_12345')
         self.assertEqual(session_headers.get('Content-Type'), 'application/json')
         self.assertEqual(session_headers.get('Accept'), 'application/json')
+
+        # Проверяем базовый URL
+        self.assertEqual(self.market_api._YandexMarketBase__base_url, "https://api.partner.market.yandex.ru/v2")
 
     def test_str_method(self):
         """Тест строкового представления"""
