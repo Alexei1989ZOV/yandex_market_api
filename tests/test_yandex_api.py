@@ -5,6 +5,7 @@ from config.config import Config
 from base.client import YandexMarketBase
 
 
+
 class TestYandexMarketBase(unittest.TestCase):
 
     def setUp(self):
@@ -232,6 +233,18 @@ class TestYandexMarketBase(unittest.TestCase):
             "paging": {"next": "token"}
         }
         self.assertEqual(result, expected_data)
+
+    @patch('requests.Session.request')
+    def test_get_campaign_id(self, mock_request):
+        """Тест получения campaign_id"""
+        campaign_id = self.market_api.get_campaign_id()
+        self.assertEqual(campaign_id, "test_campaign_id")
+
+    @patch('requests.Session.request')
+    def test_get_business_id(self, mock_request):
+        """Тест получения business_id"""
+        business_id = self.market_api.get_business_id()
+        self.assertEqual(business_id, "test_business_id")
 
 
 class TestYandexMarketBaseIntegration(unittest.TestCase):
