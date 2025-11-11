@@ -62,7 +62,7 @@ class TestYandexMarketBase(unittest.TestCase):
         mock_response.text = ""
         mock_request.return_value = mock_response
 
-        result = self.market_api._make_request('GET', 'test/endpoint')
+        result = self.market_api.make_request('GET', 'test/endpoint')
 
         expected_data = {
             "status": "OK",
@@ -86,7 +86,7 @@ class TestYandexMarketBase(unittest.TestCase):
         mock_response.text = ""
         mock_request.return_value = mock_response
 
-        result = self.market_api._make_request('POST', 'test/endpoint')
+        result = self.market_api.make_request('POST', 'test/endpoint')
 
         self.assertIsNone(result)
 
@@ -103,7 +103,7 @@ class TestYandexMarketBase(unittest.TestCase):
         }
         mock_request.return_value = mock_response
 
-        result = self.market_api._make_request('GET', 'test/endpoint')
+        result = self.market_api.make_request('GET', 'test/endpoint')
 
         self.assertIsNone(result)
 
@@ -120,7 +120,7 @@ class TestYandexMarketBase(unittest.TestCase):
         }
         mock_request.return_value = mock_response
 
-        result = self.market_api._make_request('GET', 'test/endpoint')
+        result = self.market_api.make_request('GET', 'test/endpoint')
 
         self.assertIsNone(result)
 
@@ -133,7 +133,7 @@ class TestYandexMarketBase(unittest.TestCase):
         mock_response.json.side_effect = ValueError("Invalid JSON")
         mock_request.return_value = mock_response
 
-        result = self.market_api._make_request('GET', 'test/endpoint')
+        result = self.market_api.make_request('GET', 'test/endpoint')
 
         self.assertIsNone(result)
 
@@ -142,7 +142,7 @@ class TestYandexMarketBase(unittest.TestCase):
         """Тест сетевого исключения"""
         mock_request.side_effect = requests.exceptions.ConnectionError("Connection failed")
 
-        result = self.market_api._make_request('GET', 'test/endpoint')
+        result = self.market_api.make_request('GET', 'test/endpoint')
 
         self.assertIsNone(result)
 
@@ -151,7 +151,7 @@ class TestYandexMarketBase(unittest.TestCase):
         """Тест общего исключения"""
         mock_request.side_effect = Exception("Some general error")
 
-        result = self.market_api._make_request('GET', 'test/endpoint')
+        result = self.market_api.make_request('GET', 'test/endpoint')
 
         self.assertIsNone(result)
 
@@ -164,7 +164,7 @@ class TestYandexMarketBase(unittest.TestCase):
         mock_response.json.return_value = {}  # Нет ошибок в JSON
         mock_request.return_value = mock_response
 
-        result = self.market_api._make_request('GET', 'test/endpoint')
+        result = self.market_api.make_request('GET', 'test/endpoint')
 
         self.assertIsNone(result)
 
@@ -177,7 +177,7 @@ class TestYandexMarketBase(unittest.TestCase):
         mock_response.text = ""
         mock_request.return_value = mock_response
 
-        result = self.market_api._make_request(
+        result = self.market_api.make_request(
             'POST',
             'test/endpoint',
             json={"key": "value"},
@@ -209,7 +209,7 @@ class TestYandexMarketBase(unittest.TestCase):
         mock_response.text = ""
         mock_request.return_value = mock_response
 
-        result = self.market_api._make_request('GET', 'test/endpoint')
+        result = self.market_api.make_request('GET', 'test/endpoint')
 
         self.assertIsNone(result)
 
@@ -226,7 +226,7 @@ class TestYandexMarketBase(unittest.TestCase):
         mock_response.text = ""
         mock_request.return_value = mock_response
 
-        result = self.market_api._make_request('GET', 'campaigns')
+        result = self.market_api.make_request('GET', 'campaigns')
 
         expected_data = {
             "status": "OK",
@@ -243,7 +243,7 @@ class TestYandexMarketBaseIntegration(unittest.TestCase):
     def test_real_api_connection(self):
         """Тест реального соединения с API (пропускается по умолчанию)"""
         market_api = YandexMarketBase()
-        result = market_api._make_request('GET', 'campaigns')
+        result = market_api.make_request('GET', 'campaigns')
         # Этот тест будет работать только с реальными credentials
 
 

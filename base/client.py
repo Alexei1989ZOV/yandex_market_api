@@ -1,5 +1,6 @@
 import requests
 import logging
+from typing import Optional
 from config.config import Config
 from config.logging_config import get_logger
 
@@ -21,7 +22,7 @@ class YandexMarketBase:
             'Accept': 'application/json'
         })
 
-    def _make_request(self, method, endpoint, **kwargs):
+    def make_request(self, method: str, endpoint:str, **kwargs) -> dict|None:
         '''Универсальный метод для отправки запросов'''
         try:
             url = f'{self.__base_url}/{endpoint}'
@@ -69,3 +70,19 @@ class YandexMarketBase:
         return f"Api-key: {self.__api_key[:6]}...{self.__api_key[-4:]}\n" + \
             f"BUSINESS_ID: {self.__business_id}\n" + \
             f"CAMPAIGN_ID: {self.__campaign_id}"
+
+class BaseReportManager:
+    """Базовый класс с общей логикой получения отчетов"""
+    def __init__(self, client: YandexMarketBase):
+        self.client = client
+        self.logger = get_logger(__name__)
+
+    def _make_request(self, method: str, endpoint: str, **kwargs) -> dict | None:
+        # Обертка для единообразного логирования бизнес-событий
+        self.logger.debug(f"Report request: {method} {endpoint}")
+        return self.client.make_request(method, endpoint, **kwargs)
+
+
+
+
+
