@@ -73,6 +73,12 @@ class YandexMarketBase:
             f"BUSINESS_ID: {self.__business_id}\n" + \
             f"CAMPAIGN_ID: {self.__campaign_id}"
 
+    def get_campaign_id(self):
+        return self.__campaign_id
+
+    def get_business_id(self):
+        return self.__business_id
+
 class BaseReportManager:
     """Базовый класс с общей логикой получения отчетов"""
     def __init__(self, client: YandexMarketBase, report_type: str):

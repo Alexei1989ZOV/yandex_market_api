@@ -12,8 +12,8 @@ def sales_report_example():
     sales_report = SalesReport(client)
 
     success = sales_report.get_sales_report(
-        date_from="2025-01-03",
-        date_to="2025-01-03",
+        date_from="2025-01-04",
+        date_to="2025-01-04",
         grouping="OFFERS"
     )
 
@@ -33,7 +33,7 @@ def stocks_report_example():
     client = YandexMarketBase()
     stocks = DailyStocks(client)
 
-    success = stocks.get_daily_stocks('2025-11-10')
+    success = stocks.get_daily_stocks('2025-11-09')
 
     if success:
         logger.info("✅ Отчет по остаткам успешно скачан!")
