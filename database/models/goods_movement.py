@@ -2,6 +2,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy import String, Integer, Date, DateTime
 from typing import Optional
 from datetime import datetime
+from .base import Base
 
 class GoodsMovement(Base):
     __tablename__ = 'goods_movement'
