@@ -1,5 +1,5 @@
 from base.client import YandexMarketBase
-from reports.reports import SalesReport, DailyStocks
+from reports.reports import SalesReport, DailyStocks, GoodsMovement
 from config.logging_config import setup_logging, get_logger
 
 
@@ -42,6 +42,25 @@ def stocks_report_example():
     else:
         logger.error("❌ Ошибка при получении отчета по остаткам")
 
+def movement_example():
+    """Пример получения отчета по движению товаров"""
+    logger = get_logger(__name__)
+    logger.info("🚀 Запуск генерации отчета по движению товаров...")
+
+    client = YandexMarketBase()
+    movement = GoodsMovement(client)
+
+    success = movement.get_goods_movement('2025-11-10','2025-11-10')
+
+    if success:
+        logger.info("✅ Отчет по движению товаров успешно скачан!")
+        reports = movement.list_downloaded_reports()
+        logger.info(f"📁 Файлы в папке goods_movement: {[r.name for r in reports]}")
+    else:
+        logger.error("❌ Ошибка при получении отчета по движению товаров")
+
+
+
 
 def main():
     """Основная функция"""
@@ -53,9 +72,11 @@ def main():
         logger.info("=== ЗАПУСК ПРИЛОЖЕНИЯ ===")
 
         # Запускаем оба отчета
-        stocks_report_example()
-        logger.info("\n" + "=" * 50)
-        sales_report_example()
+        # stocks_report_example()
+        # logger.info("\n" + "=" * 50)
+        # sales_report_example()
+        # logger.info("\n" + "=" * 50)
+        movement_example()
 
         logger.info("=== ВЫПОЛНЕНИЕ ЗАВЕРШЕНО ===")
 
