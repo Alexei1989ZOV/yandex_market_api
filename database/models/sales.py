@@ -1,14 +1,14 @@
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, Integer, DECIMAL, Date
+from sqlalchemy import String, Integer, DECIMAL, Date, DateTime
 from .base import Base
-from datetime import datetime
+from datetime import date, datetime
 
 
 class Sales(Base):
     __tablename__ = 'sales'
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    date: Mapped[datetime] = mapped_column(Date, nullable=False)
+    date: Mapped[date] = mapped_column(Date, nullable=False)
     offer_id: Mapped[str] = mapped_column(String(10), nullable=False)
     by_msku_shows: Mapped[int] = mapped_column(Integer, default=0)
     shows: Mapped[int] = mapped_column(Integer, default=0)

@@ -1,10 +1,12 @@
 import requests
 import time
 import logging
-from typing import Optional
+from typing import Optional, List, Dict
 from pathlib import Path
 from config.config import Config
 from config.logging_config import get_logger
+from config.etl_config import REPORT_CONFIGS
+import pandas as pd
 
 
 class YandexMarketBase:
@@ -78,6 +80,7 @@ class YandexMarketBase:
 
     def get_business_id(self):
         return self.__business_id
+
 
 class BaseReportManager:
     """Базовый класс с общей логикой получения отчетов"""
@@ -201,6 +204,121 @@ class BaseReportManager:
     def get_report_path(self, filename: str) -> Path:
         """Получить полный путь к файлу отчета"""
         return self.raw_dir / filename
+
+    def _transform_csv_to_model_data(self, file_path: Path, report_type: str, report_date: str) -> List[Dict]:
+        """
+                Трансформирует CSV в данные для создания объектов модели
+
+                Args:
+                    file_path: Путь к CSV файлу
+                    report_type: Тип отчета (ключ в REPORT_CONFIGS)
+                    report_date: Дата отчета в формате 'YYYY-MM-DD'
+
+                Returns:
+                    List[Dict]: Список словарей с данными для создания объектов модели
+        """
+
+        logger = logging.getLogger(__name__)
+
+        # Получаем конфиг
+        config = REPORT_CONFIGS.get(report_type)
+        if not config:
+            raise ValueError(f"Неизвестный тип отчета: {report_type}")
+        columns_config = config.get('columns', {})
+
+        # 1. Проверяем наличие необходимых столбцов
+        use_columns = set(columns_config.keys())
+        try:
+            src_columns = set(pd.read_csv(file_path, nrows=0).columns)
+        except Exception as e:
+            logger.error(f"❌ Не удалось прочитать файл {file_path}: {e}")
+            raise
+
+        missing_columns = use_columns.difference(src_columns)
+        if missing_columns:
+            error_msg = f"❌ Отсутствуют необходимые столбцы: {missing_columns}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        logger.info(f"✅ Все необходимые столбцы присутствуют в {file_path.name}")
+
+        # 2. Читаем CSV
+        try:
+            src_df = pd.read_csv(
+                file_path,
+                usecols=list(use_columns),
+                dtype={col: 'object' for col in use_columns}
+            )
+            logger.info(f"📊 Загружено {len(src_df)} строк из {file_path.name}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка чтения CSV: {e}")
+            raise
+
+        # 3. Применяем трансформации данных
+        for col_name, col_config in columns_config.items():
+            # Заполняем значения по умолчанию
+            if 'default' in col_config and src_df[col_name].isna().any():
+                default_val = col_config['default']
+                src_df[col_name] = src_df[col_name].fillna(default_val)
+                logger.debug(f"Применено значение по умолчанию для {col_name}: {default_val}")
+
+            # Приводим к нужному типу
+            src_df[col_name] = self._apply_type_transformation(
+                src_df[col_name], col_config, col_name
+            )
+
+        # 4. Переименовываем столбцы
+        columns_mapping = {
+            col: col_config.get('field_name', col.lower())
+            for col, col_config in columns_config.items()
+        }
+        src_df = src_df.rename(columns=columns_mapping)
+
+        # 5. Добавляем технические поля
+        src_df['report_date'] = pd.to_datetime(report_date).date()
+
+        # 6. Конвертируем в список словарей
+        records = src_df.to_dict('records')
+        logger.info(f"✅ Трансформировано {len(records)} записей")
+
+        return records
+
+
+    def _apply_type_transformation(self, series: pd.Series, col_config: Dict, col_name: str) -> pd.Series:
+        """Применяет трансформации типа данных к колонке"""
+        data_type = col_config.get('type', 'str')
+
+        try:
+            if data_type == 'int':
+                return pd.to_numeric(series, errors='coerce').fillna(0).astype('int64')
+
+            elif data_type == 'float':
+                return pd.to_numeric(series, errors='coerce').fillna(0.0).astype('float64')
+
+            elif data_type == 'decimal':
+                return pd.to_numeric(series, errors='coerce').fillna(0.0)
+
+            elif data_type == 'str':
+                series = series.astype(str)
+                max_length = col_config.get('max_length')
+                if max_length:
+                    series = series.str.slice(0, max_length)
+                return series
+
+            elif data_type == 'date':
+                # Обработка дат в формате '10-10-2025'
+                return pd.to_datetime(series, format='%d-%m-%Y', errors='coerce')
+
+            else:
+                return series
+
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.warning(f"⚠️ Ошибка трансформации колонки {col_name}: {e}")
+            return series
+
+
+
 
 
 

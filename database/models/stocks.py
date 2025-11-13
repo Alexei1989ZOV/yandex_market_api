@@ -1,14 +1,14 @@
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, DateTime, Boolean, Column, ForeignKey, Integer, DECIMAL, Date
+from sqlalchemy import String, DateTime, Integer, DECIMAL, Date
 from .base import Base
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional
 
 class Stocks(Base):
     __tablename__ = 'stocks'
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    report_date: Mapped[datetime] = mapped_column(Date, nullable=False)
+    report_date: Mapped[date] = mapped_column(Date, nullable=False)
     shop_sku: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     article: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     market_sku: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

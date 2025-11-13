@@ -50,7 +50,7 @@ def movement_example():
     client = YandexMarketBase()
     movement = GoodsMovement(client)
 
-    success = movement.get_goods_movement('2025-11-10','2025-11-10')
+    success = movement.get_goods_movement('2025-11-13','2025-11-13')
 
     if success:
         logger.info("✅ Отчет по движению товаров успешно скачан!")
