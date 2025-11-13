@@ -1,5 +1,6 @@
 from base.client import YandexMarketBase
 from base.client import BaseReportManager
+from pathlib import Path
 
 
 class SalesReport(BaseReportManager):
@@ -199,3 +200,57 @@ class GoodsMovement(BaseReportManager):
             self.logger.error(f"❌ Не удалось получить отчет по движению товара {shop_sku}")
 
         return success
+
+    def get_goods_movement_unz(self, date_from: str, date_to: str, format: str = "CSV") -> bool:
+        """
+        Получить отчет по движению товаров
+
+        Args:
+            date_from: Начало периода в формате ГГГГ-ММ-ДД
+            date_to: Конец периода в формате ГГГГ-ММ-ДД
+            format: Формат отчета (CSV, FILE, JSON)
+
+        Returns:
+            bool: True если отчет успешно скачан, False в случае ошибки
+        """
+        self.logger.info(f"🔄 Запрос отчета по движению товаров за период {date_from} - {date_to}, формат: {format}")
+
+        payload = {
+            "campaignId": self.client.get_campaign_id(),
+            "dateFrom": date_from,
+            "dateTo": date_to
+        }
+        params = {"format": format}
+
+        # Определяем расширение файла
+        extension = "zip" if format in ["CSV", "JSON"] else "xlsx"
+        filename = f"goods_movement_{date_from}_{date_to}.{extension}"
+
+        self.logger.debug(f"Параметры запроса: {payload}")
+
+        is_downloaded = self.generate_and_download_report(
+            "reports/goods-movement/generate",
+            payload,
+            params,
+            filename
+        )
+
+        if not is_downloaded:
+            self.logger.error(f"❌ Не удалось скачать отчет по движению товаров за период {date_from}-{date_to}")
+            return False
+        if format in ["CSV", "JSON"]:
+            archive_path = self.raw_dir / filename
+            is_unzipped = self._unzip_archive(archive_path)
+
+            if is_unzipped:
+                self.logger.info(f"✅ Отчет по движению товаров успешно скачан и распакован: {filename}")
+                return True
+            else:
+                self.logger.error(f"❌ Отчет скачан, но не удалось распаковать: {filename}")
+                return False
+        else:
+            # Для не-архивных форматов просто возвращаем успех скачивания
+            self.logger.info(f"✅ Отчет по движению товаров успешно сохранен: {filename}")
+            return True
+
+

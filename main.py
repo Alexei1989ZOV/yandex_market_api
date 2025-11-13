@@ -50,7 +50,7 @@ def movement_example():
     client = YandexMarketBase()
     movement = GoodsMovement(client)
 
-    success = movement.get_goods_movement('2025-11-01','2025-11-01')
+    success = movement.get_goods_movement_unz('2025-03-30', '2025-03-30', 'FILE')
 
     if success:
         logger.info("✅ Отчет по движению товаров успешно скачан!")
@@ -72,11 +72,11 @@ def main():
         logger.info("=== ЗАПУСК ПРИЛОЖЕНИЯ ===")
 
         # Запускаем оба отчета
-        stocks_report_example()
-        logger.info("\n" + "=" * 50)
-        sales_report_example()
+        # stocks_report_example()
         # logger.info("\n" + "=" * 50)
-        # movement_example()
+        # sales_report_example()
+        # logger.info("\n" + "=" * 50)
+        movement_example()
 
         logger.info("=== ВЫПОЛНЕНИЕ ЗАВЕРШЕНО ===")
 

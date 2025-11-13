@@ -8,6 +8,8 @@ from config.logging_config import get_logger
 from config.etl_config import REPORT_CONFIGS
 import pandas as pd
 from requests import Session
+from zipfile import ZipFile
+from datetime import datetime
 
 
 class YandexMarketBase:
@@ -98,6 +100,8 @@ class BaseReportManager:
         self.report_type = report_type
         self.raw_dir = Path('raw') / report_type
         self.raw_dir.mkdir(parents=True, exist_ok=True)
+        self.processed_dir = Path('processed') / report_type
+        self.processed_dir.mkdir(parents=True, exist_ok=True)
 
     def _make_request(self, method: str, endpoint: str, **kwargs) -> dict | None:
         # Обертка для единообразного логирования бизнес-событий
@@ -302,8 +306,42 @@ class BaseReportManager:
         # Скачиваем файл
         return self.download_report_file(file_url, filename)
 
-    def _unzip_archive(self, archive_path):
-        pass
+    def _unzip_archive(self, archive_path: Path, extract_dir: Path = None) -> bool:
+        """
+            Распаковывает архив с CSV файлами, добавляя временную метку к именам.
+
+            Args:
+                archive_path (Path): Путь к архиву для распаковки
+                extract_dir (Path, optional): Директория для распаковки.
+                                            Если None, используется self.processed_dir
+
+            Returns:
+                bool: True если распаковка успешна, False в случае ошибки
+        """
+        if extract_dir is None:
+            extract_dir = self.processed_dir
+        try:
+            with ZipFile(archive_path, 'r') as z:
+                for file_info in z.filelist:
+                    if file_info.filename.endswith(".csv"):
+                        # Добавляем временную метку к имени файла
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        original_stem = Path(file_info.filename).stem
+                        new_filename = f"{original_stem}_{timestamp}.csv"
+                        # Извлекаем с новым именем
+                        content = z.read(file_info.filename)
+                        new_file_path = extract_dir / new_filename
+
+                        with open(new_file_path, 'wb') as f:
+                            f.write(content)
+
+                        self.logger.debug(f'📦 Извлечен: {new_filename}')
+            return True
+        except Exception as e:
+            self.logger.error(f'❌ Ошибка при распаковке {archive_path}: {e}')
+            return False
+
+
 
     def list_downloaded_reports(self) -> list[Path]:
         """Получить список всех скачанных отчетов этого типа"""
@@ -326,7 +364,7 @@ class BaseReportManager:
                     List[Dict]: Список словарей с данными для создания объектов модели
         """
 
-        logger = logging.getLogger(__name__)
+        logger = self.logger
 
         # Получаем конфиг
         config = REPORT_CONFIGS.get(report_type)
@@ -421,8 +459,7 @@ class BaseReportManager:
                 return series
 
         except Exception as e:
-            logger = logging.getLogger(__name__)
-            logger.warning(f"⚠️ Ошибка трансформации колонки {col_name}: {e}")
+            self.logger.warning(f"⚠️ Ошибка трансформации колонки {col_name}: {e}")
             return series
 
 
