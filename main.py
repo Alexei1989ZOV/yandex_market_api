@@ -12,8 +12,8 @@ def sales_report_example():
     sales_report = SalesReport(client)
 
     success = sales_report.get_sales_report(
-        date_from="2025-01-04",
-        date_to="2025-01-04",
+        date_from="2025-02-04",
+        date_to="2025-02-04",
         grouping="OFFERS"
     )
 
@@ -33,7 +33,7 @@ def stocks_report_example():
     client = YandexMarketBase()
     stocks = DailyStocks(client)
 
-    success = stocks.get_daily_stocks('2025-11-09')
+    success = stocks.get_daily_stocks('2025-11-13')
 
     if success:
         logger.info("✅ Отчет по остаткам успешно скачан!")
@@ -50,7 +50,7 @@ def movement_example():
     client = YandexMarketBase()
     movement = GoodsMovement(client)
 
-    success = movement.get_goods_movement('2025-11-13','2025-11-13')
+    success = movement.get_goods_movement('2025-11-01','2025-11-01')
 
     if success:
         logger.info("✅ Отчет по движению товаров успешно скачан!")
@@ -72,11 +72,11 @@ def main():
         logger.info("=== ЗАПУСК ПРИЛОЖЕНИЯ ===")
 
         # Запускаем оба отчета
-        # stocks_report_example()
+        stocks_report_example()
+        logger.info("\n" + "=" * 50)
+        sales_report_example()
         # logger.info("\n" + "=" * 50)
-        # sales_report_example()
-        # logger.info("\n" + "=" * 50)
-        movement_example()
+        # movement_example()
 
         logger.info("=== ВЫПОЛНЕНИЕ ЗАВЕРШЕНО ===")
 

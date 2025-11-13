@@ -7,6 +7,7 @@ from config.config import Config
 from config.logging_config import get_logger
 from config.etl_config import REPORT_CONFIGS
 import pandas as pd
+from requests import Session
 
 
 class YandexMarketBase:
@@ -80,6 +81,13 @@ class YandexMarketBase:
 
     def get_business_id(self):
         return self.__business_id
+
+    def get_session(self) -> Session:
+        """
+        Возвращает экземпляр requests.Session для прямых запросов.
+        ⚠️ Использовать только для чтения (GET-запросы, стриминг файлов).
+        """
+        return self._session
 
 
 class BaseReportManager:
@@ -159,7 +167,8 @@ class BaseReportManager:
         save_path = self.raw_dir / filename
 
         try:
-            response = self.client._session.get(file_url, stream=True)
+            session = self.client.get_session()
+            response = session.get(file_url, stream=True)
             if response.status_code == 200:
                 with open(save_path, 'wb') as f:
                     for chunk in response.iter_content(chunk_size=8192):
