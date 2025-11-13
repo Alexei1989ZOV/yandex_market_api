@@ -113,7 +113,31 @@ class BaseReportManager:
 
     def wait_for_report_completion(self, report_id: str, max_wait_time: int = 600,
                                    check_interval: int = 10) -> str | None:
-        """Ожидание завершения генерации отчета с таймаутом"""
+        """
+    Ожидает завершения генерации отчета, периодически проверяя его статус.
+
+    Метод выполняет циклическую проверку статуса отчета до достижения конечного состояния
+    (успех/ошибка) или истечения максимального времени ожидания.
+
+    Args:
+        report_id (str): ID отчета, за которым осуществляется наблюдение
+        max_wait_time (int, optional): Максимальное время ожидания в секундах.
+                                      По умолчанию 600 (10 минут)
+        check_interval (int, optional): Интервал между проверками статуса в секундах.
+                                       По умолчанию 10
+
+    Returns:
+        str | None: URL сгенерированного отчета в случае успеха,
+                   None в случае ошибки или таймаута
+
+    Raises:
+        Не выбрасывает исключения, но логирует ошибки и возвращает None при проблемах
+
+    Examples:
+        >>> report_url = client.wait_for_report_completion("report-123")
+        >>> if report_url:
+        ...     download_report(report_url)
+    """
         start_time = time.time()
         check_count = 0
 
@@ -163,7 +187,39 @@ class BaseReportManager:
         return None
 
     def download_report_file(self, file_url: str, filename: str) -> bool:
-        """Скачивание готового отчета в папку raw/тип_отчета/"""
+        """
+        Скачивает готовый отчет по URL и сохраняет в локальную файловую систему.
+
+        Метод выполняет потоковое скачивание файла отчета для эффективной работы
+        с большими файлами и сохраняет его в соответствующую директорию raw данных.
+
+        Args:
+            file_url (str): Прямой URL для скачивания отчета
+            filename (str): Имя файла для сохранения (с расшиением).
+                           Файл будет сохранен в поддиректории raw/
+
+        Returns:
+            bool: True если файл успешно скачан и сохранен,
+                  False в случае ошибки HTTP-запроса или файловых операций
+
+        Raises:
+            Не выбрасывает явных исключений, но перехватывает все исключения
+            и возвращает False, логируя ошибку
+
+        Notes:
+            - Использует потоковое скачивание для эффективной работы с большими файлами
+            - Сохраняет файлы в директорию `raw/тип_отчета/`
+            - Автоматически создает необходимые директории если они не существуют
+            - Логирует успешное завершение или детали ошибки
+
+        Examples:
+            >>> success = client.download_report_file(
+            ...     "https://api.example.com/reports/file123.pdf",
+            ...     "sales_report_2024.pdf"
+            ... )
+            >>> if success:
+            ...     print("Отчет успешно скачан")
+        """
         save_path = self.raw_dir / filename
 
         try:
@@ -184,7 +240,47 @@ class BaseReportManager:
             return False
 
     def generate_and_download_report(self, endpoint: str,payload: dict, params: dict, filename: str) -> bool:
-        """Универсальный метод для генерации и скачивания отчета"""
+        """
+        Выполняет полный цикл генерации и скачивания отчета.
+
+        Универсальный метод, который объединяет три этапа работы с отчетами:
+        1. Запуск генерации отчета через API
+        2. Ожидание завершения генерации
+        3. Скачивание готового отчета в файловую систему
+
+        Args:
+            endpoint (str): API endpoint для запуска генерации отчета
+            payload (dict): Тело запроса с параметрами генерации отчета
+            params (dict): Query-параметры для GET-запроса
+            filename (str): Имя файла для сохранения отчета (с расширением)
+
+        Returns:
+            bool: True если весь процесс завершен успешно (отчет сгенерирован и скачан),
+                  False если любая из стадий завершилась ошибкой
+
+        Workflow:
+            1. POST запрос на endpoint с payload для запуска генерации
+            2. Извлечение report_id из ответа API
+            3. Ожидание завершения генерации через wait_for_report_completion()
+            4. Скачивание файла через download_report_file()
+
+        Notes:
+            - Метод полностью обрабатывает весь жизненный цикл отчета
+            - Логирует каждый этап процесса для отслеживания прогресса
+            - Прерывается на первой же ошибке, не продолжая следующие этапы
+
+        Examples:
+            >>> success = client.generate_and_download_report(
+            ...     endpoint="reports/sales",
+            ...     payload={"period": "2024-01", "format": "pdf"},
+            ...     params={"type": "detailed"},
+            ...     filename="sales_report_january_2024.pdf"
+            ... )
+            >>> if success:
+            ...     print("Весь процесс завершен успешно")
+            ... else:
+            ...     print("Процесс прерван на одном из этапов")
+        """
         # Запускаем генерацию отчета
         data = self._make_request('POST', endpoint, json=payload, params=params)
         if not data:
@@ -205,6 +301,9 @@ class BaseReportManager:
 
         # Скачиваем файл
         return self.download_report_file(file_url, filename)
+
+    def _unzip_archive(self, archive_path):
+        pass
 
     def list_downloaded_reports(self) -> list[Path]:
         """Получить список всех скачанных отчетов этого типа"""
