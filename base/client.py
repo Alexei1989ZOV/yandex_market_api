@@ -29,12 +29,18 @@ class YandexMarketBase:
             'Accept': 'application/json'
         })
 
-    def make_request(self, method: str, endpoint:str, **kwargs) -> dict | None:
-        '''Универсальный метод для отправки запросов'''
+    def make_request(self, method: str, endpoint: str, **kwargs) -> dict:
+        """
+        Выполняет HTTP-запрос к API Яндекс.Маркета.
+        
+        Returns:
+            dict: Данные ответа API
+            
+        Raises:
+            Exception: При любых ошибках запроса
+        """
         try:
             url = f'{self.__base_url}/{endpoint}'
-
-            # Логируем детали запроса на DEBUG уровне
             self.logger.debug(f"Request: {method} {url}")
 
             response = self._session.request(method, url, **kwargs)
@@ -51,27 +57,29 @@ class YandexMarketBase:
                 self.logger.debug(f"Success: {method} {endpoint}")
                 return data
 
-            # Логируем ошибки
-            self.logger.error(f'HTTP {response.status_code} for {method} {endpoint}')
-
+            # Создаем информативное исключение вместо просто ValueError
             if has_errors:
+                error_messages = []
                 for error in errors:
                     code = error.get('code', 'UNKNOWN_CODE')
                     message = error.get('message', 'No message provided')
-                    self.logger.error(f'API Error - code: {code}, message: {message}')
+                    error_messages.append(f"{code}: {message}")
+                
+                error_msg = f"HTTP {response.status_code} - API Errors: {', '.join(error_messages)}"
+                raise Exception(error_msg)
             else:
-                self.logger.error('Unknown API error')
+                error_msg = f"HTTP {response.status_code} for {method} {endpoint}"
                 if response.text:
-                    self.logger.debug(f'Response text: {response.text}')  # DEBUG для деталей
-
-            return None
+                    error_msg += f" - Response: {response.text}"
+                raise Exception(error_msg)
 
         except requests.exceptions.RequestException as e:
-            self.logger.exception(f'Network error for {method} {endpoint}: {e}')
-            return None
+            error_msg = f'Network error for {method} {endpoint}: {e}'
+            self.logger.exception(error_msg)
+            raise Exception(error_msg) from e
         except Exception as e:
             self.logger.exception(f'Unexpected error for {method} {endpoint}: {e}')
-            return None
+            raise
 
     def __str__(self):
         return f"Api-key: {self.__api_key[:6]}...{self.__api_key[-4:]}\n" + \
@@ -103,45 +111,45 @@ class BaseReportManager:
         self.processed_dir = Path('processed') / report_type
         self.processed_dir.mkdir(parents=True, exist_ok=True)
 
-    def _make_request(self, method: str, endpoint: str, **kwargs) -> dict | None:
+    def _make_request(self, method: str, endpoint: str, **kwargs) -> dict:
         # Обертка для единообразного логирования бизнес-событий
         self.logger.debug(f"Report request: {method} {endpoint}")
         return self.client.make_request(method, endpoint, **kwargs)
 
 
-    def _extract_report_id(self, result: dict) -> str | None:
-        """Извлечение report_id из успешного ответа"""
-        if result and "result" in result:
-            return result['result'].get('reportId')
-        return None
+    def _extract_report_id(self, response: dict) -> str:
+        """Извлекает report_id из успешного ответа"""
+        if "result" not in response:
+            raise ValueError("В ответе отсутствует ключ 'result'")
+        report_id = response['result'].get('reportId')
+        if not report_id:
+            raise ValueError("Ключ reportId отсутствует в ответе или пустой")
+        if not isinstance(report_id, str):
+            raise ValueError(f"reportId должен быть строкой, получен {type(report_id)}")
+        return report_id
 
-    def wait_for_report_completion(self, report_id: str, max_wait_time: int = 600,
-                                   check_interval: int = 10) -> str | None:
+
+    def _wait_for_report_completion(self, report_id: str, max_wait_time: int = 600,
+                                   check_interval: int = 10) -> str:
         """
-    Ожидает завершения генерации отчета, периодически проверяя его статус.
+        Ожидает завершения генерации отчета, периодически проверяя его статус.
 
-    Метод выполняет циклическую проверку статуса отчета до достижения конечного состояния
-    (успех/ошибка) или истечения максимального времени ожидания.
+        Args:
+            report_id: ID отчета, за которым осуществляется наблюдение
+            max_wait_time: Максимальное время ожидания в секундах. По умолчанию 600 (10 минут)
+            check_interval: Интервал между проверками статуса в секундах. По умолчанию 10
 
-    Args:
-        report_id (str): ID отчета, за которым осуществляется наблюдение
-        max_wait_time (int, optional): Максимальное время ожидания в секундах.
-                                      По умолчанию 600 (10 минут)
-        check_interval (int, optional): Интервал между проверками статуса в секундах.
-                                       По умолчанию 10
+        Returns:
+            URL сгенерированного отчета в случае успеха
 
-    Returns:
-        str | None: URL сгенерированного отчета в случае успеха,
-                   None в случае ошибки или таймаута
+        Raises:
+            RuntimeError: При ошибке генерации отчета или отсутствии ссылки
+            TimeoutError: При превышении времени ожидания
 
-    Raises:
-        Не выбрасывает исключения, но логирует ошибки и возвращает None при проблемах
-
-    Examples:
-        >>> report_url = client.wait_for_report_completion("report-123")
-        >>> if report_url:
-        ...     download_report(report_url)
-    """
+        Examples:
+            >>> report_url = client.wait_for_report_completion("report-123")
+            >>> download_report(report_url)
+        """
         start_time = time.time()
         check_count = 0
 
@@ -150,12 +158,6 @@ class BaseReportManager:
         while time.time() - start_time < max_wait_time:
             check_count += 1
             data = self._make_request('GET', f'reports/info/{report_id}')
-
-            if not data:
-                self.logger.warning(f'Попытка {check_count}: не удалось получить статус отчета')
-                time.sleep(check_interval)
-                continue
-
             result = data.get('result', {})
             status = result.get('status')
             elapsed = int(time.time() - start_time)
@@ -167,13 +169,13 @@ class BaseReportManager:
                     return file_url
                 else:
                     self.logger.error('Генерация завершена, но ссылка отсутствует')
-                    return None
+                    raise RuntimeError('Генерация завершена, но ссылка отсутствует')
 
             elif status == 'FAILED':
                 sub_status = result.get('subStatus')
                 error_msg = f' ({sub_status})' if sub_status else ''
                 self.logger.error(f'❌ Генерация отчета провалена{error_msg}')
-                return None
+                raise RuntimeError(f'Генерация отчета провалена{error_msg}')
 
             elif status in ['PENDING', 'PROCESSING']:
                 # Логируем не каждую проверку, чтобы не засорять логи
@@ -188,41 +190,28 @@ class BaseReportManager:
                 time.sleep(check_interval)
 
         self.logger.error(f'⏰ Превышено время ожидания ({max_wait_time} сек.) для отчета {report_id}')
-        return None
+        raise TimeoutError(f'Превышено время ожидания ({max_wait_time} сек.) для отчета {report_id}')
 
-    def download_report_file(self, file_url: str, filename: str) -> bool:
+    def download_report_file(self, file_url: str, filename: str) -> str:
         """
-        Скачивает готовый отчет по URL и сохраняет в локальную файловую систему.
-
-        Метод выполняет потоковое скачивание файла отчета для эффективной работы
-        с большими файлами и сохраняет его в соответствующую директорию raw данных.
+        Скачивает готовый отчет по URL и сохраняет в файл.
 
         Args:
-            file_url (str): Прямой URL для скачивания отчета
-            filename (str): Имя файла для сохранения (с расшиением).
-                           Файл будет сохранен в поддиректории raw/
+            file_url: Прямой URL для скачивания отчета
+            filename: Имя файла для сохранения (с расширением)
 
         Returns:
-            bool: True если файл успешно скачан и сохранен,
-                  False в случае ошибки HTTP-запроса или файловых операций
+            str: Путь к сохраненному файлу
 
         Raises:
-            Не выбрасывает явных исключений, но перехватывает все исключения
-            и возвращает False, логируя ошибку
-
-        Notes:
-            - Использует потоковое скачивание для эффективной работы с большими файлами
-            - Сохраняет файлы в директорию `raw/тип_отчета/`
-            - Автоматически создает необходимые директории если они не существуют
-            - Логирует успешное завершение или детали ошибки
+            IOError: При ошибке HTTP-запроса или файловых операций
 
         Examples:
-            >>> success = client.download_report_file(
+            >>> file_path = client.download_report_file(
             ...     "https://api.example.com/reports/file123.pdf",
             ...     "sales_report_2024.pdf"
             ... )
-            >>> if success:
-            ...     print("Отчет успешно скачан")
+            >>> print(f"Отчет сохранен: {file_path}")
         """
         save_path = self.raw_dir / filename
 
@@ -235,14 +224,14 @@ class BaseReportManager:
                         if chunk:
                             f.write(chunk)
                 self.logger.info(f'📥 Отчет сохранен: {save_path}')
-                return True
+                return save_path
             else:
                 self.logger.error(f'Ошибка скачивания: {response.status_code} - {response.text}')
-                return False
+                raise IOError("Произогла ошибка во время скачивания")
         except Exception as e:
             self.logger.error(f'Ошибка при скачивании отчета: {e}')
-            return False
-
+            raise
+# Рефакторить дальше отсюда
     def generate_and_download_report(self, endpoint: str,payload: dict, params: dict, filename: str) -> bool:
         """
         Выполняет полный цикл генерации и скачивания отчета.
