@@ -201,7 +201,7 @@ class GoodsMovement(BaseReportManager):
 
         return success
 
-    def get_goods_movement_unz(self, date_from: str, date_to: str, format: str = "CSV") -> bool:
+    def get_goods_movement_unz(self, date_from: str, date_to: str, format: str = "CSV", unzip: bool = True) -> bool:
         """
         Получить отчет по движению товаров
 
@@ -209,6 +209,7 @@ class GoodsMovement(BaseReportManager):
             date_from: Начало периода в формате ГГГГ-ММ-ДД
             date_to: Конец периода в формате ГГГГ-ММ-ДД
             format: Формат отчета (CSV, FILE, JSON)
+            unzip: Требуется или нет распаковка архива (True - если да, False - если нет)
 
         Returns:
             bool: True если отчет успешно скачан, False в случае ошибки
@@ -238,16 +239,20 @@ class GoodsMovement(BaseReportManager):
         if not is_downloaded:
             self.logger.error(f"❌ Не удалось скачать отчет по движению товаров за период {date_from}-{date_to}")
             return False
+        
         if format in ["CSV", "JSON"]:
-            archive_path = self.raw_dir / filename
-            is_unzipped = self._unzip_archive(archive_path)
-
-            if is_unzipped:
-                self.logger.info(f"✅ Отчет по движению товаров успешно скачан и распакован: {filename}")
-                return True
+            if unzip == True:
+                archive_path = self.raw_dir / filename
+                is_unzipped = self._unzip_archive(archive_path)
+                if is_unzipped:
+                    self.logger.info(f"✅ Отчет по движению товаров успешно скачан и распакован: {filename}")
+                    return True
+                else:
+                    self.logger.error(f"❌ Отчет скачан, но не удалось распаковать: {filename}")
+                    return False
             else:
-                self.logger.error(f"❌ Отчет скачан, но не удалось распаковать: {filename}")
-                return False
+                self.logger.info(f"✅ Отчет по движению товаров успешно сохранен: {filename}")
+                return True
         else:
             # Для не-архивных форматов просто возвращаем успех скачивания
             self.logger.info(f"✅ Отчет по движению товаров успешно сохранен: {filename}")

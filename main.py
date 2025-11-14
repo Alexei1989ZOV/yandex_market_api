@@ -58,7 +58,7 @@ def movement_example():
         logger.info(f"📁 Файлы в папке goods_movement: {[r.name for r in reports]}")
     else:
         logger.error("❌ Ошибка при получении отчета по движению товаров")
-
+# comment
 
 
 
