@@ -1,6 +1,9 @@
 from base.client import YandexMarketBase
 from base.client import BaseReportManager
 from pathlib import Path
+from typing import Optional, List, Dict
+from datetime import datetime
+
 
 
 class SalesReport(BaseReportManager):
@@ -116,6 +119,7 @@ class GoodsMovement(BaseReportManager):
 
     def __init__(self, client: YandexMarketBase):
         super().__init__(client, "goods_movement")
+        self.model_name = "GoodsMovement"
         self.logger.info("✅ Инициализирован менеджер отчетов по движению товаров")
 
     def get_goods_movement(self, date_from: str, date_to: str, format: str = "CSV") -> bool:
@@ -201,7 +205,7 @@ class GoodsMovement(BaseReportManager):
 
         return success
 
-    def get_goods_movement_unz(self, date_from: str, date_to: str, format: str = "CSV", unzip: bool = True) -> bool:
+    def get_goods_movement_unz(self, date_from: str, date_to: str, format: str = "CSV", unzip: bool = True) -> List[Dict] | bool:
         """
         Получить отчет по движению товаров
 
@@ -212,7 +216,8 @@ class GoodsMovement(BaseReportManager):
             unzip: Требуется или нет распаковка архива (True - если да, False - если нет)
 
         Returns:
-            bool: True если отчет успешно скачан, False в случае ошибки
+            List[Dict]: Если unzip=True - список словарей с данными
+            bool: Если unzip=False - True если отчет успешно скачан
         """
         self.logger.info(f"🔄 Запрос отчета по движению товаров за период {date_from} - {date_to}, формат: {format}")
 
@@ -241,21 +246,20 @@ class GoodsMovement(BaseReportManager):
             return False
         
         if format in ["CSV", "JSON"]:
-            if unzip == True:
+            if unzip:
                 archive_path = self.raw_dir / filename
-                is_unzipped = self._unzip_archive(archive_path)
-                if is_unzipped:
-                    self.logger.info(f"✅ Отчет по движению товаров успешно скачан и распакован: {filename}")
-                    return True
-                else:
-                    self.logger.error(f"❌ Отчет скачан, но не удалось распаковать: {filename}")
-                    return False
+                unzipped_files = self._unzip_archive(archive_path)
+                self.logger.info(f"✅ Отчет по движению товаров успешно скачан и распакован: {filename}")
+                self.logger.info(f"Пытаемся трансформировать")
+                data_list = self._transform_csv_to_model_data(unzipped_files[0], self.report_type,datetime.now().isoformat())
+                return data_list
             else:
                 self.logger.info(f"✅ Отчет по движению товаров успешно сохранен: {filename}")
                 return True
+
         else:
-            # Для не-архивных форматов просто возвращаем успех скачивания
             self.logger.info(f"✅ Отчет по движению товаров успешно сохранен: {filename}")
             return True
+
 
 

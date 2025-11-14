@@ -306,7 +306,7 @@ class BaseReportManager:
         # Скачиваем файл
         return self.download_report_file(file_url, filename)
 
-    def _unzip_archive(self, archive_path: Path, extract_dir: Path = None) -> bool:
+    def _unzip_archive(self, archive_path: Path, extract_dir: Path = None) -> List[Path]:
         """
             Распаковывает архив с CSV файлами, добавляя временную метку к именам.
 
@@ -316,10 +316,13 @@ class BaseReportManager:
                                             Если None, используется self.processed_dir
 
             Returns:
-                bool: True если распаковка успешна, False в случае ошибки
+                List[Path]: Список путей к распакованным CSV файлам
+            Raises:
+                Exception: Если распаковка не удалась
         """
         if extract_dir is None:
             extract_dir = self.processed_dir
+        extracted_files = []
         try:
             with ZipFile(archive_path, 'r') as z:
                 for file_info in z.filelist:
@@ -334,12 +337,12 @@ class BaseReportManager:
 
                         with open(new_file_path, 'wb') as f:
                             f.write(content)
-
+                        extracted_files.append(new_file_path)
                         self.logger.debug(f'📦 Извлечен: {new_filename}')
-            return True
+            return extracted_files
         except Exception as e:
             self.logger.error(f'❌ Ошибка при распаковке {archive_path}: {e}')
-            return False
+            raise
 
 
 

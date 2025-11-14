@@ -50,12 +50,12 @@ def movement_example():
     client = YandexMarketBase()
     movement = GoodsMovement(client)
 
-    success = movement.get_goods_movement_unz('2025-03-31', '2025-03-31', 'CSV')
+    success = movement.get_goods_movement_unz('2025-03-30', '2025-03-30', 'CSV')
 
     if success:
-        logger.info("✅ Отчет по движению товаров успешно скачан!")
-        reports = movement.list_downloaded_reports()
-        logger.info(f"📁 Файлы в папке goods_movement: {[r.name for r in reports]}")
+        logger.info("✅ Отчет по движению товаров успешно скачан, распакован, трансформирован!")
+        print(success)
+
     else:
         logger.error("❌ Ошибка при получении отчета по движению товаров")
 # comment
