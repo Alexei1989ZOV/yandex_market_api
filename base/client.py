@@ -192,7 +192,7 @@ class BaseReportManager:
         self.logger.error(f'⏰ Превышено время ожидания ({max_wait_time} сек.) для отчета {report_id}')
         raise TimeoutError(f'Превышено время ожидания ({max_wait_time} сек.) для отчета {report_id}')
 
-    def download_report_file(self, file_url: str, filename: str) -> str:
+    def _download_report_file(self, file_url: str, filename: str) -> Path:
         """
         Скачивает готовый отчет по URL и сохраняет в файл.
 
@@ -201,17 +201,19 @@ class BaseReportManager:
             filename: Имя файла для сохранения (с расширением)
 
         Returns:
-            str: Путь к сохраненному файлу
+            Path: Путь к сохраненному файлу
 
         Raises:
             IOError: При ошибке HTTP-запроса или файловых операций
 
         Examples:
-            >>> file_path = client.download_report_file(
+            >>> file_path = client._download_report_file(
             ...     "https://api.example.com/reports/file123.pdf",
             ...     "sales_report_2024.pdf"
             ... )
             >>> print(f"Отчет сохранен: {file_path}")
+            >>> # Теперь можно использовать Path методы:
+            >>> file_path.name, file_path.parent
         """
         save_path = self.raw_dir / filename
 
@@ -227,74 +229,39 @@ class BaseReportManager:
                 return save_path
             else:
                 self.logger.error(f'Ошибка скачивания: {response.status_code} - {response.text}')
-                raise IOError("Произогла ошибка во время скачивания")
+                raise IOError("Произошла ошибка во время скачивания")
         except Exception as e:
             self.logger.error(f'Ошибка при скачивании отчета: {e}')
             raise
-# Рефакторить дальше отсюда
-    def generate_and_download_report(self, endpoint: str,payload: dict, params: dict, filename: str) -> bool:
+
+    def generate_and_download_report(self, endpoint: str, payload: dict, params: dict, filename: str) -> Path:
         """
         Выполняет полный цикл генерации и скачивания отчета.
 
-        Универсальный метод, который объединяет три этапа работы с отчетами:
-        1. Запуск генерации отчета через API
-        2. Ожидание завершения генерации
-        3. Скачивание готового отчета в файловую систему
-
         Args:
-            endpoint (str): API endpoint для запуска генерации отчета
-            payload (dict): Тело запроса с параметрами генерации отчета
-            params (dict): Query-параметры для GET-запроса
-            filename (str): Имя файла для сохранения отчета (с расширением)
+            endpoint: API endpoint для запуска генерации отчета
+            payload: Тело запроса с параметрами генерации отчета
+            params: Query-параметры для GET-запроса
+            filename: Имя файла для сохранения отчета (с расширением)
 
         Returns:
-            bool: True если весь процесс завершен успешно (отчет сгенерирован и скачан),
-                  False если любая из стадий завершилась ошибкой
-
-        Workflow:
-            1. POST запрос на endpoint с payload для запуска генерации
-            2. Извлечение report_id из ответа API
-            3. Ожидание завершения генерации через wait_for_report_completion()
-            4. Скачивание файла через download_report_file()
-
-        Notes:
-            - Метод полностью обрабатывает весь жизненный цикл отчета
-            - Логирует каждый этап процесса для отслеживания прогресса
-            - Прерывается на первой же ошибке, не продолжая следующие этапы
+            Path к сохраненному отчету
 
         Examples:
-            >>> success = client.generate_and_download_report(
-            ...     endpoint="reports/sales",
-            ...     payload={"period": "2024-01", "format": "pdf"},
-            ...     params={"type": "detailed"},
-            ...     filename="sales_report_january_2024.pdf"
-            ... )
-            >>> if success:
-            ...     print("Весь процесс завершен успешно")
-            ... else:
-            ...     print("Процесс прерван на одном из этапов")
+            >>> report_path = client.generate_and_download_report(...)
+            >>> print(f"Отчет сохранен: {report_path}")
+            >>> # Можно использовать Path методы:
+            >>> report_path.name, report_path.parent, report_path.exists()
         """
         # Запускаем генерацию отчета
         data = self._make_request('POST', endpoint, json=payload, params=params)
-        if not data:
-            self.logger.error('Не удалось запустить генерацию отчета')
-            return False
-
         report_id = self._extract_report_id(data)
-        if not report_id:
-            self.logger.error('Не удалось извлечь report_id из ответа')
-            return False
-
-        self.logger.info(f'🚀 Запущена генерация отчета: {report_id}')
-
-        # Ждем завершения
-        file_url = self.wait_for_report_completion(report_id)
-        if not file_url:
-            return False
-
+        self.logger.info(f'🚀 Запущена генерация отчета: {report_id}')        
+        # Ждем завершения генерации
+        file_url = self._wait_for_report_completion(report_id)
         # Скачиваем файл
-        return self.download_report_file(file_url, filename)
-
+        return self._download_report_file(file_url, filename)
+# Рефакторить дальше отсюда
     def _unzip_archive(self, archive_path: Path, extract_dir: Path = None) -> List[Path]:
         """
             Распаковывает архив с CSV файлами, добавляя временную метку к именам.
