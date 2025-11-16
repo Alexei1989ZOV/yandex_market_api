@@ -312,15 +312,22 @@ class BaseReportManager:
 
     def _transform_csv_to_model_data(self, file_path: Path, report_type: str, report_date: str) -> List[Dict]:
         """
-                Трансформирует CSV в данные для создания объектов модели
+        Трансформирует CSV отчет в данные для моделей БД.
 
-                Args:
-                    file_path: Путь к CSV файлу
-                    report_type: Тип отчета (ключ в REPORT_CONFIGS)
-                    report_date: Дата отчета в формате 'YYYY-MM-DD'
+        Валидирует структуру, применяет преобразования и подготавливает данные
+        для bulk_create согласно конфигурации REPORT_CONFIGS.
 
-                Returns:
-                    List[Dict]: Список словарей с данными для создания объектов модели
+        Args:
+            file_path: Путь к CSV файлу отчета
+            report_type: Ключ отчета в REPORT_CONFIGS 
+            report_date: Дата отчета 'YYYY-MM-DD'
+
+        Returns:
+            Список словарей с данными для создания объектов модели
+
+        Raises:
+            ValueError: При неизвестном report_type или отсутствии колонок
+            pd.errors.EmptyDataError: При пустом файле
         """
 
         logger = self.logger
@@ -337,7 +344,7 @@ class BaseReportManager:
             src_columns = set(pd.read_csv(file_path, nrows=0).columns)
         except Exception as e:
             logger.error(f"❌ Не удалось прочитать файл {file_path}: {e}")
-            raise
+            raise IOError("Не удалось прочитать файл")
 
         missing_columns = use_columns.difference(src_columns)
         if missing_columns:
@@ -354,6 +361,10 @@ class BaseReportManager:
                 usecols=list(use_columns),
                 dtype={col: 'object' for col in use_columns}
             )
+
+            if len(src_df) == 0:
+                logger.warning(f"📭 CSV файл пустой: {file_path.name}")
+                return []
             logger.info(f"📊 Загружено {len(src_df)} строк из {file_path.name}")
         except Exception as e:
             logger.error(f"❌ Ошибка чтения CSV: {e}")
@@ -390,36 +401,70 @@ class BaseReportManager:
 
 
     def _apply_type_transformation(self, series: pd.Series, col_config: Dict, col_name: str) -> pd.Series:
-        """Применяет трансформации типа данных к колонке"""
+        """
+        Применяет преобразования типов с валидацией и контролем ошибок.
+        
+        Returns:
+            Преобразованная series или оригинал при высоких потерях данных
+        """
         data_type = col_config.get('type', 'str')
-
+        
         try:
             if data_type == 'int':
-                return pd.to_numeric(series, errors='coerce').fillna(0).astype('int64')
+                transformed = pd.to_numeric(series, errors='coerce')
+                if self._get_conversion_success_rate(series, transformed) >= 0.9:  # 90% успеха
+                    return transformed.fillna(0).astype('int64')
+                else:
+                    self.logger.warning(f"⚠️ Высокие потери в {col_name}, оставлен оригинал")
+                    return series.astype(str)  # fallback к строке
 
             elif data_type == 'float':
-                return pd.to_numeric(series, errors='coerce').fillna(0.0).astype('float64')
+                transformed = pd.to_numeric(series, errors='coerce')
+                if self._get_conversion_success_rate(series, transformed) >= 0.9:
+                    return transformed.fillna(0.0).astype('float64')
+                else:
+                    self.logger.warning(f"⚠️ Высокие потери в {col_name}, оставлен оригинал")
+                    return series.astype(str)
 
-            elif data_type == 'decimal':
-                return pd.to_numeric(series, errors='coerce').fillna(0.0)
+            elif data_type == 'date':
+                transformed = pd.to_datetime(series, format='%d-%m-%Y', errors='coerce')
+                success_rate = self._get_conversion_success_rate(series, transformed)
+                if success_rate >= 0.8:  # Для дат можно снизить порог
+                    return transformed
+                else:
+                    self.logger.warning(f"⚠️ Много некорректных дат в {col_name} ({success_rate:.1%})")
+                    return series.astype(str)  # fallback
 
             elif data_type == 'str':
                 series = series.astype(str)
-                max_length = col_config.get('max_length')
-                if max_length:
+                if max_length := col_config.get('max_length'):
                     series = series.str.slice(0, max_length)
                 return series
 
-            elif data_type == 'date':
-                # Обработка дат в формате '10-10-2025'
-                return pd.to_datetime(series, format='%d-%m-%Y', errors='coerce')
-
             else:
-                return series
+                return series.astype(str)  # fallback для неизвестных типов
 
         except Exception as e:
-            self.logger.warning(f"⚠️ Ошибка трансформации колонки {col_name}: {e}")
-            return series
+            self.logger.error(f"❌ Критическая ошибка трансформации {col_name}: {e}")
+            return series.astype(str)  # Всегда возвращаем строку как запасной вариант
+
+    def _get_conversion_success_rate(self, original: pd.Series, transformed: pd.Series) -> float:
+        """
+        Рассчитывает процент успешных преобразований.
+        
+        Args:
+            original: Исходная series до преобразования
+            transformed: Series после преобразования
+            
+        Returns:
+            float: Доля успешно преобразованных значений (0.0-1.0)
+        """
+        original_count = original.notna().sum()
+        if original_count == 0:
+            return 1.0  # Все NaN - считаем успехом
+            
+        transformed_count = transformed.notna().sum()
+        return transformed_count / original_count
 
 
 
