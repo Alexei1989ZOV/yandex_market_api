@@ -465,6 +465,36 @@ class BaseReportManager:
             
         transformed_count = transformed.notna().sum()
         return transformed_count / original_count
+    
+    def _load_to_db(self, records: list, model):
+        """
+        Загружает трансформированные данные в базу данных.
+
+        Args:
+            record: list Список словарей с преобразованными данными (записи)
+            model: Модель данных таблицы, в которую хотим занрузить данные
+
+        Returns:
+           int: Количество загруженных в БД записей
+            
+        Raises:
+            Exception: При любых ошибках запроса
+        
+
+        """
+        from database.session import create_tables, get_db
+        create_tables()
+        db = next(get_db)
+        try:
+            objects = [model(**record) for record in records]
+            db.add_all(objects)
+            db.commit()
+            return len(objects) 
+        except:
+            db.rollback()
+            raise
+        finally:
+            db.close
 
 
 
