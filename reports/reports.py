@@ -1,8 +1,9 @@
 from base.client import YandexMarketBase
 from base.client import BaseReportManager
+from database.models import GoodsMovementModel
 from pathlib import Path
 from typing import Optional, List, Dict
-from datetime import datetime
+from datetime import datetime, date
 
 
 
@@ -119,49 +120,55 @@ class GoodsMovement(BaseReportManager):
 
     def __init__(self, client: YandexMarketBase):
         super().__init__(client, "goods_movement")
-        self.model_name = "GoodsMovement"
+        self.model_name = GoodsMovementModel
         self.logger.info("✅ Инициализирован менеджер отчетов по движению товаров")
 
-    def get_goods_movement(self, date_from: str, date_to: str, format: str = "CSV") -> bool:
-        """
-        Получить отчет по движению товаров
+    def run_full_pipeline(self, date_from: str, date_to: str, format: str = "CSV") -> int:
+        try:
+            params = {"format" : format}
+            payload  = {
+                "campaignId": self.client.get_campaign_id(),
+                "dateFrom": date_from,
+                "dateTo": date_to    
+            }
+            extension = "zip" if format in ["CSV", "JSON"] else "xlsx"
+            filename = f"goods_movement_{date_from}_{date_to}.{extension}"
 
-        Args:
-            date_from: Начало периода в формате ГГГГ-ММ-ДД
-            date_to: Конец периода в формате ГГГГ-ММ-ДД
-            format: Формат отчета (CSV, FILE, JSON)
+            path = self.generate_and_download_report(
+                "reports/goods-movement/generate",
+                payload=payload,
+                params=params,
+                filename=filename
+            )
 
-        Returns:
-            bool: True если отчет успешно скачан, False в случае ошибки
-        """
-        self.logger.info(f"🔄 Запрос отчета по движению товаров за период {date_from} - {date_to}, формат: {format}")
+            unzipped_files = self._unzip_archive(path)
 
-        payload = {
-            "campaignId": self.client.get_campaign_id(),
-            "dateFrom": date_from,
-            "dateTo": date_to
-        }
-        params = {"format": format}
+            report_date = datetime.now().strftime('%Y-%m-%d') # Тут исправить логику даты отчета
+            all_records = []
 
-        # Определяем расширение файла
-        extension = "zip" if format in ["CSV", "JSON"] else "xlsx"
-        filename = f"goods_movement_{date_from}_{date_to}.{extension}"
+            for file_path in unzipped_files:
+                records = self._transform_csv_to_model_data(
+                    file_path, 
+                    self.report_type, 
+                    report_date
+                )
+                all_records.extend(records)
+            if all_records:
+                # Предполагаем, что self.model определён в классе
+                loaded_count = self._load_to_db(all_records, self.model_name)
+                self.logger.info(f"✅ Загружено {loaded_count} записей в БД")
+                return loaded_count
+            else:
+                self.logger.warning("📭 Нет данных для загрузки")
+                return 0
+                
+        except Exception as e:
+            self.logger.error(f"❌ Ошибка в пайплайне: {e}")
+            raise
 
-        self.logger.debug(f"Параметры запроса: {payload}")
+           
 
-        success = self.generate_and_download_report(
-            "reports/goods-movement/generate",
-            payload,
-            params,
-            filename
-        )
 
-        if success:
-            self.logger.info(f"✅ Отчет по движению товаров успешно сохранен: {filename}")
-        else:
-            self.logger.error(f"❌ Не удалось получить отчет по движению товаров за период {date_from}-{date_to}")
-
-        return success
 
     def get_goods_movement_with_sku(self, date_from: str, date_to: str, shop_sku: str, format: str = "CSV") -> bool:
         """

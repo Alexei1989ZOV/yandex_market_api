@@ -4,7 +4,7 @@ from typing import Optional
 from datetime import datetime, date
 from .base import Base
 
-class GoodsMovement(Base):
+class GoodsMovementModel(Base):
     __tablename__ = 'goods_movement'
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

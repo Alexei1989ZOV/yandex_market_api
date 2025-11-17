@@ -3,44 +3,6 @@ from reports.reports import SalesReport, DailyStocks, GoodsMovement
 from config.logging_config import setup_logging, get_logger
 
 
-def sales_report_example():
-    """Пример получения отчета по продажам"""
-    logger = get_logger(__name__)
-    logger.info("🚀 Запуск генерации отчета по продажам...")
-
-    client = YandexMarketBase()
-    sales_report = SalesReport(client)
-
-    success = sales_report.get_sales_report(
-        date_from="2025-02-04",
-        date_to="2025-02-04",
-        grouping="OFFERS"
-    )
-
-    if success:
-        logger.info("✅ Отчет по продажам успешно скачан!")
-        reports = sales_report.list_downloaded_reports()
-        logger.info(f"📁 Файлы в папке sales_analytics: {[r.name for r in reports]}")
-    else:
-        logger.error("❌ Ошибка при получении отчета по продажам")
-
-
-def stocks_report_example():
-    """Пример получения отчета по остаткам"""
-    logger = get_logger(__name__)
-    logger.info("🚀 Запуск генерации отчета по остаткам...")
-
-    client = YandexMarketBase()
-    stocks = DailyStocks(client)
-
-    success = stocks.get_daily_stocks('2025-11-13')
-
-    if success:
-        logger.info("✅ Отчет по остаткам успешно скачан!")
-        reports = stocks.list_downloaded_reports()
-        logger.info(f"📁 Файлы в папке daily_stocks: {[r.name for r in reports]}")
-    else:
-        logger.error("❌ Ошибка при получении отчета по остаткам")
 
 def movement_example():
     """Пример получения отчета по движению товаров"""
@@ -50,15 +12,12 @@ def movement_example():
     client = YandexMarketBase()
     movement = GoodsMovement(client)
 
-    success = movement.get_goods_movement_unz('2025-03-30', '2025-03-30', 'CSV')
+    loaded = movement.run_full_pipeline('2025-03-30', '2025-03-30', 'CSV')
 
-    if success:
+    if loaded > 0:
         logger.info("✅ Отчет по движению товаров успешно скачан, распакован, трансформирован!")
-        print(success)
-
     else:
         logger.error("❌ Ошибка при получении отчета по движению товаров")
-# comment
 
 
 
@@ -70,14 +29,7 @@ def main():
 
     try:
         logger.info("=== ЗАПУСК ПРИЛОЖЕНИЯ ===")
-
-        # Запускаем оба отчета
-        # stocks_report_example()
-        # logger.info("\n" + "=" * 50)
-        # sales_report_example()
-        # logger.info("\n" + "=" * 50)
         movement_example()
-
         logger.info("=== ВЫПОЛНЕНИЕ ЗАВЕРШЕНО ===")
 
     except Exception as e:

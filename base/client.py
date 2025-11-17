@@ -484,7 +484,7 @@ class BaseReportManager:
         """
         from database.session import create_tables, get_db
         create_tables()
-        db = next(get_db)
+        db = next(get_db())
         try:
             objects = [model(**record) for record in records]
             db.add_all(objects)
