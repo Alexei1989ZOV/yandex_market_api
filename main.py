@@ -12,7 +12,7 @@ def movement_example():
     client = YandexMarketBase()
     movement = GoodsMovement(client)
 
-    loaded = movement.run_full_pipeline('2025-03-30', '2025-03-30', 'CSV')
+    loaded = movement.run_full_pipeline('2025-01-01', '2025-02-28', 'CSV')
 
     if loaded > 0:
         logger.info("✅ Отчет по движению товаров успешно скачан, распакован, трансформирован!")

@@ -212,61 +212,7 @@ class GoodsMovement(BaseReportManager):
 
         return success
 
-    def get_goods_movement_unz(self, date_from: str, date_to: str, format: str = "CSV", unzip: bool = True) -> List[Dict] | bool:
-        """
-        Получить отчет по движению товаров
 
-        Args:
-            date_from: Начало периода в формате ГГГГ-ММ-ДД
-            date_to: Конец периода в формате ГГГГ-ММ-ДД
-            format: Формат отчета (CSV, FILE, JSON)
-            unzip: Требуется или нет распаковка архива (True - если да, False - если нет)
-
-        Returns:
-            List[Dict]: Если unzip=True - список словарей с данными
-            bool: Если unzip=False - True если отчет успешно скачан
-        """
-        self.logger.info(f"🔄 Запрос отчета по движению товаров за период {date_from} - {date_to}, формат: {format}")
-
-        payload = {
-            "campaignId": self.client.get_campaign_id(),
-            "dateFrom": date_from,
-            "dateTo": date_to
-        }
-        params = {"format": format}
-
-        # Определяем расширение файла
-        extension = "zip" if format in ["CSV", "JSON"] else "xlsx"
-        filename = f"goods_movement_{date_from}_{date_to}.{extension}"
-
-        self.logger.debug(f"Параметры запроса: {payload}")
-
-        is_downloaded = self.generate_and_download_report(
-            "reports/goods-movement/generate",
-            payload,
-            params,
-            filename
-        )
-
-        if not is_downloaded:
-            self.logger.error(f"❌ Не удалось скачать отчет по движению товаров за период {date_from}-{date_to}")
-            return False
-        
-        if format in ["CSV", "JSON"]:
-            if unzip:
-                archive_path = self.raw_dir / filename
-                unzipped_files = self._unzip_archive(archive_path)
-                self.logger.info(f"✅ Отчет по движению товаров успешно скачан и распакован: {filename}")
-                self.logger.info(f"Пытаемся трансформировать")
-                data_list = self._transform_csv_to_model_data(unzipped_files[0], self.report_type,datetime.now().isoformat())
-                return data_list
-            else:
-                self.logger.info(f"✅ Отчет по движению товаров успешно сохранен: {filename}")
-                return True
-
-        else:
-            self.logger.info(f"✅ Отчет по движению товаров успешно сохранен: {filename}")
-            return True
 
 
 
