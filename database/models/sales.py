@@ -21,6 +21,6 @@ class Sales(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     def __repr__(self):
-        return f"SKU: {self.offer_id}| Date: {self.date}| Заказано: {self.order_items} шт на сумму: {self.order_items_total_amount} руб"
+        return f"SKU: {self.shop_sku}| Date: {self.report_date}| Заказано: {self.order_items} шт на сумму: {self.order_items_total_amount} руб"
 
 

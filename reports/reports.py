@@ -1,6 +1,6 @@
 from base.client import YandexMarketBase
 from base.client import BaseReportManager
-from database.models import GoodsMovementModel
+from database.models import GoodsMovementModel, Sales
 from pathlib import Path
 from typing import Optional, List, Dict
 from datetime import datetime, date
@@ -17,6 +17,7 @@ class SalesReport(BaseReportManager):
 
     def __init__(self, client: YandexMarketBase):
         super().__init__(client, "sales_analytics")
+        self.model_name = Sales
         self.logger.info("✅ Инициализирован менеджер отчетов по продажам")
 
     def get_sales_report(self, date_from: str, date_to: str, grouping: str = "OFFERS") -> bool:
@@ -57,6 +58,49 @@ class SalesReport(BaseReportManager):
             self.logger.error(f"❌ Не удалось получить отчет по продажам за период {date_from}-{date_to}")
 
         return success
+
+    def run_full_pipeline(self, date_from: str, date_to: str, grouping: str = "OFFERS", format_: str = "CSV") -> int:
+        try:
+            params = {"format": format_}
+            payload = {
+                "businessId": self.client.get_business_id(),
+                "dateFrom": date_from,
+                "dateTo": date_to,
+                "grouping": grouping
+            }
+            extension = "zip" if format_ in ["CSV", "JSON"] else "xlsx"
+            filename = f"sales_{date_from}_{date_to}_{format_}.{extension}"
+
+            path = self.generate_and_download_report(
+                "reports/shows-sales/generate",
+                payload=payload,
+                params=params,
+                filename=filename
+            )
+
+            unzipped_files = self._unzip_archive(path)
+
+            report_date = datetime.now().strftime('%Y-%m-%d')  # Тут исправить логику даты отчета
+            all_records = []
+
+            for file_path in unzipped_files:
+                records = self._transform_csv_to_model_data(
+                    file_path,
+                    self.report_type,
+                    report_date
+                )
+                all_records.extend(records)
+            if all_records:
+                # Предполагаем, что self.model определён в классе
+                loaded_count = self._load_to_db(all_records, self.model_name)
+                self.logger.info(f"✅ Загружено {loaded_count} записей в БД")
+                return loaded_count
+            else:
+                self.logger.warning("📭 Нет данных для загрузки")
+                return 0
+        except Exception as e:
+            self.logger.error(f"❌ Ошибка в пайплайне: {e}")
+            raise
 
 
 class DailyStocks(BaseReportManager):

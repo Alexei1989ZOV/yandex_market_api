@@ -391,7 +391,9 @@ class BaseReportManager:
         src_df = src_df.rename(columns=columns_mapping)
 
         # 5. Добавляем технические поля
-        src_df['report_date'] = pd.to_datetime(report_date).date()
+        if 'report_date' not in src_df.columns:
+            src_df['report_date'] = pd.to_datetime(report_date).date()
+
 
         # 6. Конвертируем в список словарей
         records = src_df.to_dict('records')
