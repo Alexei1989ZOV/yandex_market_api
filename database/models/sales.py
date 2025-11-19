@@ -10,8 +10,7 @@ class Sales(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     report_date: Mapped[date] = mapped_column(Date, nullable=False)
-    offer_id: Mapped[str] = mapped_column(String(20), nullable=False)
-    by_msku_shows: Mapped[int] = mapped_column(Integer, default=0)
+    shop_sku: Mapped[str] = mapped_column(String(20), nullable=False)
     shows: Mapped[int] = mapped_column(Integer, default=0)
     to_cart: Mapped[int] = mapped_column(Integer, default=0)
     order_items: Mapped[int] = mapped_column(Integer, default=0)
