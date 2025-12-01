@@ -224,7 +224,7 @@ class BaseReportManager:
         """Получить полный путь к файлу отчета"""
         return self.raw_dir / filename
 
-    def _transform_csv_to_model_data(self, file_path: Path, report_type: str, report_date: str) -> List[Dict]:
+    def _transform_csv_to_model_data(self, file_path: Path, report_type: str, report_date: str | None) -> List[Dict]:
         """
         Трансформирует CSV отчет в данные для моделей БД.
 

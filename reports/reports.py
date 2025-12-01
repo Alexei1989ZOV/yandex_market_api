@@ -80,14 +80,14 @@ class SalesReport(BaseReportManager):
 
             unzipped_files = self._unzip_archive(path)
 
-            report_date = datetime.now().strftime('%Y-%m-%d')  # Тут исправить логику даты отчета
+            # report_date = datetime.now().strftime('%Y-%m-%d')  # Тут исправить логику даты отчета
             all_records = []
 
             for file_path in unzipped_files:
                 records = self._transform_csv_to_model_data(
                     file_path,
                     self.report_type,
-                    report_date
+                    report_date=None
                 )
                 all_records.extend(records)
             if all_records:
