@@ -1,0 +1,401 @@
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import List, Dict
+from zipfile import ZipFile
+
+import pandas as pd
+
+from base.client import YandexMarketBase
+from configs.etl_config import REPORT_CONFIGS
+from configs.logging_config import get_logger
+from database.database_manager import DatabaseManager
+
+
+class BaseReportManager:
+    """Базовый класс с общей логикой получения отчетов"""
+    def __init__(self, client: YandexMarketBase, report_type: str):
+        self.client = client
+        self.logger = get_logger(__name__)
+        self.report_type = report_type
+        self.raw_dir = Path('raw') / report_type
+        self.raw_dir.mkdir(parents=True, exist_ok=True)
+        self.processed_dir = Path('processed') / report_type
+        self.processed_dir.mkdir(parents=True, exist_ok=True)
+        self.db = DatabaseManager()
+        self.db.create_tables()
+
+    def _make_request(self, method: str, endpoint: str, **kwargs) -> dict:
+        # Обертка для единообразного логирования бизнес-событий
+        self.logger.debug(f"Report request: {method} {endpoint}")
+        return self.client.make_request(method, endpoint, **kwargs)
+
+
+    def _extract_report_id(self, response: dict) -> str:
+        """Извлекает report_id из успешного ответа"""
+        if "result" not in response:
+            raise ValueError("В ответе отсутствует ключ 'result'")
+        report_id = response['result'].get('reportId')
+        if not report_id:
+            raise ValueError("Ключ reportId отсутствует в ответе или пустой")
+        if not isinstance(report_id, str):
+            raise ValueError(f"reportId должен быть строкой, получен {type(report_id)}")
+        return report_id
+
+
+    def _wait_for_report_completion(self, report_id: str, max_wait_time: int = 600,
+                                   check_interval: int = 10) -> str:
+        """
+        Ожидает завершения генерации отчета, периодически проверяя его статус.
+
+        Args:
+            report_id: ID отчета, за которым осуществляется наблюдение
+            max_wait_time: Максимальное время ожидания в секундах. По умолчанию 600 (10 минут)
+            check_interval: Интервал между проверками статуса в секундах. По умолчанию 10
+
+        Returns:
+            URL сгенерированного отчета в случае успеха
+
+        Raises:
+            RuntimeError: При ошибке генерации отчета или отсутствии ссылки
+            TimeoutError: При превышении времени ожидания
+
+        Examples:
+            >>> report_url = client.wait_for_report_completion("report-123")
+            >>> download_report(report_url)
+        """
+        start_time = time.time()
+        check_count = 0
+
+        self.logger.info(f"🔄 Начато ожидание отчета {report_id} (макс. {max_wait_time} сек.)")
+
+        while time.time() - start_time < max_wait_time:
+            check_count += 1
+            data = self._make_request('GET', f'reports/info/{report_id}')
+            result = data.get('result', {})
+            status = result.get('status')
+            elapsed = int(time.time() - start_time)
+
+            if status == 'DONE':
+                if result.get('file'):
+                    file_url = result.get('file')
+                    self.logger.info(f'✅ Отчет готов за {elapsed} сек.: {file_url}')
+                    return file_url
+                else:
+                    self.logger.error('Генерация завершена, но ссылка отсутствует')
+                    raise RuntimeError('Генерация завершена, но ссылка отсутствует')
+
+            elif status == 'FAILED':
+                sub_status = result.get('subStatus')
+                error_msg = f' ({sub_status})' if sub_status else ''
+                self.logger.error(f'❌ Генерация отчета провалена{error_msg}')
+                raise RuntimeError(f'Генерация отчета провалена{error_msg}')
+
+            elif status in ['PENDING', 'PROCESSING']:
+                # Логируем не каждую проверку, чтобы не засорять логи
+                if check_count % 5 == 1:  # Каждую 5-ю проверку
+                    estimated_time = result.get('estimatedGenerationTime')
+                    eta_msg = f", ETA: {estimated_time}ms" if estimated_time else ""
+                    self.logger.info(f'⏳ Отчет генерируется... {elapsed} сек.{eta_msg}')
+                time.sleep(check_interval)
+
+            else:
+                self.logger.warning(f'Неизвестный статус: {status}')
+                time.sleep(check_interval)
+
+        self.logger.error(f'⏰ Превышено время ожидания ({max_wait_time} сек.) для отчета {report_id}')
+        raise TimeoutError(f'Превышено время ожидания ({max_wait_time} сек.) для отчета {report_id}')
+
+    def _download_report_file(self, file_url: str, filename: str) -> Path:
+        """
+        Скачивает готовый отчет по URL и сохраняет в файл.
+
+        Args:
+            file_url: Прямой URL для скачивания отчета
+            filename: Имя файла для сохранения (с расширением)
+
+        Returns:
+            Path: Путь к сохраненному файлу
+
+        Raises:
+            IOError: При ошибке HTTP-запроса или файловых операций
+
+        Examples:
+            >>> file_path = client._download_report_file(
+            ...     "https://api.example.com/reports/file123.pdf",
+            ...     "sales_report_2024.pdf"
+            ... )
+            >>> print(f"Отчет сохранен: {file_path}")
+            >>> # Теперь можно использовать Path методы:
+            >>> file_path.name, file_path.parent
+        """
+        save_path = self.raw_dir / filename
+
+        try:
+            session = self.client.get_session()
+            response = session.get(file_url, stream=True)
+            if response.status_code == 200:
+                with open(save_path, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                self.logger.info(f'📥 Отчет сохранен: {save_path}')
+                return save_path
+            else:
+                self.logger.error(f'Ошибка скачивания: {response.status_code} - {response.text}')
+                raise IOError("Произошла ошибка во время скачивания")
+        except Exception as e:
+            self.logger.error(f'Ошибка при скачивании отчета: {e}')
+            raise
+
+    def generate_and_download_report(self, endpoint: str, payload: dict, params: dict, filename: str) -> Path:
+        """
+        Выполняет полный цикл генерации и скачивания отчета.
+
+        Args:
+            endpoint: API endpoint для запуска генерации отчета
+            payload: Тело запроса с параметрами генерации отчета
+            params: Query-параметры для GET-запроса
+            filename: Имя файла для сохранения отчета (с расширением)
+
+        Returns:
+            Path к сохраненному отчету
+
+        Examples:
+            >>> report_path = client.generate_and_download_report(...)
+            >>> print(f"Отчет сохранен: {report_path}")
+            >>> # Можно использовать Path методы:
+            >>> report_path.name, report_path.parent, report_path.exists()
+        """
+        # Запускаем генерацию отчета
+        data = self._make_request('POST', endpoint, json=payload, params=params)
+        report_id = self._extract_report_id(data)
+        self.logger.info(f'🚀 Запущена генерация отчета: {report_id}')
+        # Ждем завершения генерации
+        file_url = self._wait_for_report_completion(report_id)
+        # Скачиваем файл
+        return self._download_report_file(file_url, filename)
+
+    def _unzip_archive(self, archive_path: Path, extract_dir: Path = None) -> List[Path]:
+        """
+            Распаковывает архив с CSV файлами, добавляя временную метку к именам.
+
+            Args:
+                archive_path (Path): Путь к архиву для распаковки
+                extract_dir (Path, optional): Директория для распаковки.
+                                            Если None, используется self.processed_dir
+
+            Returns:
+                List[Path]: Список путей к распакованным CSV файлам
+            Raises:
+                Exception: Если распаковка не удалась
+        """
+        if extract_dir is None:
+            extract_dir = self.processed_dir
+        extracted_files = []
+        try:
+            with ZipFile(archive_path, 'r') as z:
+                for file_info in z.filelist:
+                    if file_info.filename.endswith(".csv"):
+                        # Добавляем временную метку к имени файла
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        original_stem = Path(file_info.filename).stem
+                        new_filename = f"{original_stem}_{timestamp}.csv"
+                        # Извлекаем с новым именем
+                        content = z.read(file_info.filename)
+                        new_file_path = extract_dir / new_filename
+
+                        with open(new_file_path, 'wb') as f:
+                            f.write(content)
+                        extracted_files.append(new_file_path)
+                        self.logger.debug(f'📦 Извлечен: {new_filename}')
+            return extracted_files
+        except Exception as e:
+            self.logger.error(f'❌ Ошибка при распаковке {archive_path}: {e}')
+            raise
+
+
+
+    def list_downloaded_reports(self) -> list[Path]:
+        """Получить список всех скачанных отчетов этого типа"""
+        return list(self.raw_dir.glob("*"))
+
+    def get_report_path(self, filename: str) -> Path:
+        """Получить полный путь к файлу отчета"""
+        return self.raw_dir / filename
+
+    def _transform_csv_to_model_data(self, file_path: Path, report_type: str, report_date: str) -> List[Dict]:
+        """
+        Трансформирует CSV отчет в данные для моделей БД.
+
+        Валидирует структуру, применяет преобразования и подготавливает данные
+        для bulk_create согласно конфигурации REPORT_CONFIGS.
+
+        Args:
+            file_path: Путь к CSV файлу отчета
+            report_type: Ключ отчета в REPORT_CONFIGS
+            report_date: Дата отчета 'YYYY-MM-DD'
+
+        Returns:
+            Список словарей с данными для создания объектов модели
+
+        Raises:
+            ValueError: При неизвестном report_type или отсутствии колонок
+            pd.errors.EmptyDataError: При пустом файле
+        """
+
+        logger = self.logger
+
+        # Получаем конфиг
+        config = REPORT_CONFIGS.get(report_type)
+        if not config:
+            raise ValueError(f"Неизвестный тип отчета: {report_type}")
+        columns_config = config.get('columns', {})
+
+        # 1. Проверяем наличие необходимых столбцов
+        use_columns = set(columns_config.keys())
+        try:
+            src_columns = set(pd.read_csv(file_path, nrows=0).columns)
+        except Exception as e:
+            logger.error(f"❌ Не удалось прочитать файл {file_path}: {e}")
+            raise IOError("Не удалось прочитать файл")
+
+        missing_columns = use_columns.difference(src_columns)
+        if missing_columns:
+            error_msg = f"❌ Отсутствуют необходимые столбцы: {missing_columns}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        logger.info(f"✅ Все необходимые столбцы присутствуют в {file_path.name}")
+
+        # 2. Читаем CSV
+        try:
+            src_df = pd.read_csv(
+                file_path,
+                usecols=list(use_columns),
+                dtype={col: 'object' for col in use_columns}
+            )
+
+            if len(src_df) == 0:
+                logger.warning(f"📭 CSV файл пустой: {file_path.name}")
+                return []
+            logger.info(f"📊 Загружено {len(src_df)} строк из {file_path.name}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка чтения CSV: {e}")
+            raise
+
+        # 3. Применяем трансформации данных
+        for col_name, col_config in columns_config.items():
+            # Заполняем значения по умолчанию
+            if 'default' in col_config and src_df[col_name].isna().any():
+                default_val = col_config['default']
+                src_df[col_name] = src_df[col_name].fillna(default_val)
+                logger.debug(f"Применено значение по умолчанию для {col_name}: {default_val}")
+
+            # Приводим к нужному типу
+            src_df[col_name] = self._apply_type_transformation(
+                src_df[col_name], col_config, col_name
+            )
+
+        # 4. Переименовываем столбцы
+        columns_mapping = {
+            col: col_config.get('field_name', col.lower())
+            for col, col_config in columns_config.items()
+        }
+        src_df = src_df.rename(columns=columns_mapping)
+
+        # 5. Добавляем технические поля
+        if 'report_date' not in src_df.columns:
+            src_df['report_date'] = pd.to_datetime(report_date).date()
+
+
+        # 6. Конвертируем в список словарей
+        records = src_df.to_dict('records')
+        logger.info(f"✅ Трансформировано {len(records)} записей")
+
+        return records
+
+
+    def _apply_type_transformation(self, series: pd.Series, col_config: Dict, col_name: str) -> pd.Series:
+        """
+        Применяет преобразования типов с валидацией и контролем ошибок.
+
+        Returns:
+            Преобразованная series или оригинал при высоких потерях данных
+        """
+        data_type = col_config.get('type', 'str')
+
+        try:
+            if data_type == 'int':
+                transformed = pd.to_numeric(series, errors='coerce')
+                if self._get_conversion_success_rate(series, transformed) >= 0.9:  # 90% успеха
+                    return transformed.fillna(0).astype('int64')
+                else:
+                    self.logger.warning(f"⚠️ Высокие потери в {col_name}, оставлен оригинал")
+                    return series.astype(str)  # fallback к строке
+
+            elif data_type == 'float':
+                transformed = pd.to_numeric(series, errors='coerce')
+                if self._get_conversion_success_rate(series, transformed) >= 0.9:
+                    return transformed.fillna(0.0).astype('float64')
+                else:
+                    self.logger.warning(f"⚠️ Высокие потери в {col_name}, оставлен оригинал")
+                    return series.astype(str)
+
+            elif data_type == 'date':
+                transformed = pd.to_datetime(series, format='%d-%m-%Y', errors='coerce')
+                success_rate = self._get_conversion_success_rate(series, transformed)
+                if success_rate >= 0.8:  # Для дат можно снизить порог
+                    return transformed
+                else:
+                    self.logger.warning(f"⚠️ Много некорректных дат в {col_name} ({success_rate:.1%})")
+                    return series.astype(str)  # fallback
+
+            elif data_type == 'str':
+                series = series.astype(str)
+                if max_length := col_config.get('max_length'):
+                    series = series.str.slice(0, max_length)
+                return series
+
+            else:
+                return series.astype(str)  # fallback для неизвестных типов
+
+        except Exception as e:
+            self.logger.error(f"❌ Критическая ошибка трансформации {col_name}: {e}")
+            return series.astype(str)  # Всегда возвращаем строку как запасной вариант
+
+    def _get_conversion_success_rate(self, original: pd.Series, transformed: pd.Series) -> float:
+        """
+        Рассчитывает процент успешных преобразований.
+
+        Args:
+            original: Исходная series до преобразования
+            transformed: Series после преобразования
+
+        Returns:
+            float: Доля успешно преобразованных значений (0.0-1.0)
+        """
+        original_count = original.notna().sum()
+        if original_count == 0:
+            return 1.0  # Все NaN - считаем успехом
+
+        transformed_count = transformed.notna().sum()
+        return transformed_count / original_count
+
+    def _load_to_db(self, records: list, model):
+        """
+        Загружает трансформированные данные в базу данных.
+        """
+        if not records:
+            self.logger.warning("📭 Нет данных для загрузки в БД.")
+            return 0
+
+        try:
+            inserted = self.db.bulk_insert(model, records)
+            self.logger.info(f"💾 Загружено в БД: {inserted} записей в {model.__tablename__}")
+            return inserted
+
+        except Exception as e:
+            self.logger.error(f"❌ Ошибка загрузки в БД: {e}")
+            raise
+

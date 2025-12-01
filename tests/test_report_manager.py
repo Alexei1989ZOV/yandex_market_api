@@ -3,7 +3,8 @@ import tempfile
 import shutil
 from pathlib import Path
 from unittest.mock import Mock, patch
-from base.client import BaseReportManager, YandexMarketBase
+from base.client import YandexMarketBase
+from base.report_base import BaseReportManager
 
 
 class TestBaseReportManager(unittest.TestCase):

@@ -1,5 +1,5 @@
 from base.client import YandexMarketBase
-from base.client import BaseReportManager
+from base.report_base import BaseReportManager
 from database.models import GoodsMovementModel, Sales
 from pathlib import Path
 from typing import Optional, List, Dict

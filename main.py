@@ -1,6 +1,6 @@
 from base.client import YandexMarketBase
 from reports.reports import SalesReport, DailyStocks, GoodsMovement
-from config.logging_config import setup_logging, get_logger
+from configs.logging_config import setup_logging, get_logger
 
 
 
@@ -12,7 +12,7 @@ def movement_example():
     client = YandexMarketBase()
     movement = GoodsMovement(client)
 
-    loaded = movement.run_full_pipeline('2025-01-01', '2025-02-28', 'CSV')
+    loaded = movement.run_full_pipeline('2025-10-30', '2025-10-30', 'CSV')
 
     if loaded > 0:
         logger.info("✅ Отчет по движению товаров успешно скачан, распакован, трансформирован!")
@@ -27,7 +27,7 @@ def sales_example():
     client = YandexMarketBase()
     sales = SalesReport(client)
 
-    loaded = sales.run_full_pipeline('2025-01-01', '2025-01-03', 'OFFERS', 'CSV')
+    loaded = sales.run_full_pipeline('2025-11-20', '2025-11-30', 'OFFERS', 'CSV')
 
     if loaded > 0:
         logger.info("✅ Отчет по движению товаров успешно скачан, распакован, трансформирован!")
@@ -44,7 +44,7 @@ def main():
 
     try:
         logger.info("=== ЗАПУСК ПРИЛОЖЕНИЯ ===")
-        sales_example()
+        #sales_example()
         movement_example()
         logger.info("=== ВЫПОЛНЕНИЕ ЗАВЕРШЕНО ===")
 

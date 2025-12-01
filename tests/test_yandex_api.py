@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import Mock, patch, MagicMock
 import requests
-from config.config import Config
+from configs.config_project import Config
 from base.client import YandexMarketBase
 
 
