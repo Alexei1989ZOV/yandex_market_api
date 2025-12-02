@@ -102,6 +102,91 @@ class SalesReport(BaseReportManager):
             self.logger.error(f"❌ Ошибка в пайплайне: {e}")
             raise
 
+    def run_missing_reports(
+            self,
+            max_days: int = 20,
+            grouping: str = "OFFERS"
+    ) -> dict:
+        """
+        Автоматически находит и загружает пропущенные отчеты.
+
+        Args:
+            max_days: максимальное количество дней для загрузки за один раз
+            grouping: группировка данных
+
+        Returns:
+            dict: статистика загрузки
+        """
+        stats = {
+            "total_missing": 0,
+            "loaded": 0,
+            "failed": 0,
+            "loaded_dates": [],
+            "errors": []
+        }
+
+        try:
+            # 1. Находим пропущенные даты
+            missing_dates = self.get_missing_dates_simple(self.model_name)
+            stats["total_missing"] = len(missing_dates)
+
+            if not missing_dates:
+                self.logger.info("🎉 Все отчеты уже загружены!")
+                return stats
+
+            self.logger.info(f"📋 Найдено {len(missing_dates)} пропущенных дат")
+
+            # 2. Ограничиваем количество для одной загрузки
+            dates_to_load = missing_dates[:max_days]
+            self.logger.info(f"Будем загружать {len(dates_to_load)} дат: {dates_to_load}")
+
+            # 3. Загружаем каждую дату
+            for date_str in dates_to_load:
+                try:
+                    self.logger.info(f"🚀 Загрузка отчета за {date_str}")
+
+                    # Используем существующий метод
+                    loaded = self.run_full_pipeline(
+                        date_from=date_str,
+                        date_to=date_str,
+                        grouping=grouping,
+                        format_="CSV"
+                    )
+
+                    if loaded > 0:
+                        stats["loaded"] += 1
+                        stats["loaded_dates"].append(date_str)
+                        self.logger.info(f"✅ Отчет за {date_str} загружен ({loaded} записей)")
+                    else:
+                        stats["failed"] += 1
+                        stats["errors"].append(f"{date_str}: нет данных")
+                        self.logger.warning(f"⚠️ Нет данных за {date_str}")
+
+                except Exception as e:
+                    stats["failed"] += 1
+                    stats["errors"].append(f"{date_str}: {str(e)}")
+                    self.logger.error(f"❌ Ошибка загрузки отчета за {date_str}: {e}")
+                    # Продолжаем со следующей датой
+
+            # 4. Итоги
+            self.logger.info(f"""
+            {'=' * 50}
+            ИТОГИ АВТОЗАГРУЗКИ:
+            {'=' * 50}
+            Всего пропущенных: {stats['total_missing']}
+            Попытка загрузки: {len(dates_to_load)}
+            Успешно: {stats['loaded']}
+            Ошибок: {stats['failed']}
+            {'=' * 50}
+            """)
+
+            return stats
+
+        except Exception as e:
+            self.logger.error(f"❌ Критическая ошибка в run_missing_reports: {e}")
+            stats["errors"].append(f"Критическая ошибка: {str(e)}")
+            return stats
+
 
 class DailyStocks(BaseReportManager):
     """

@@ -3,9 +3,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Dict
 from zipfile import ZipFile
-
+from sqlalchemy import select
 import pandas as pd
-
+from datetime import datetime, date, timedelta
 from base.client import YandexMarketBase
 from configs.etl_config import REPORT_CONFIGS
 from configs.logging_config import get_logger
@@ -399,3 +399,42 @@ class BaseReportManager:
             self.logger.error(f"❌ Ошибка загрузки в БД: {e}")
             raise
 
+    def get_missing_dates_simple(self, model) -> List[str]:
+        """
+        Простой метод: находит пропуски от первой даты в БД до вчера.
+        """
+        with self.db.get_session() as session:
+            # Получаем все даты
+            stmt = select(model.report_date).distinct().order_by(model.report_date)
+            dates_result = session.execute(stmt).scalars().all()
+
+            if not dates_result:
+                return []
+
+            # Первая дата в БД
+            first_date = dates_result[0]
+            if isinstance(first_date, datetime):
+                first_date = first_date.date()
+
+            # До вчера
+            yesterday = date.today() - timedelta(days=1)
+
+            # Существующие даты в set
+            existing = set()
+            for d in dates_result:
+                if isinstance(d, datetime):
+                    existing.add(d.date().strftime('%Y-%m-%d'))
+                else:
+                    existing.add(d.strftime('%Y-%m-%d'))
+
+            # Ищем пропуски
+            missing = []
+            current = first_date
+
+            while current <= yesterday:
+                date_str = current.strftime('%Y-%m-%d')
+                if date_str not in existing:
+                    missing.append(date_str)
+                current += timedelta(days=1)
+
+            return missing

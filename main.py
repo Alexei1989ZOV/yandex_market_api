@@ -12,7 +12,7 @@ def movement_example():
     client = YandexMarketBase()
     movement = GoodsMovement(client)
 
-    loaded = movement.run_full_pipeline('2025-10-30', '2025-10-30', 'CSV')
+    loaded = movement.run_full_pipeline('2024-12-01', '2025-10-30', 'CSV')
 
     if loaded > 0:
         logger.info("✅ Отчет по движению товаров успешно скачан, распакован, трансформирован!")
@@ -27,12 +27,32 @@ def sales_example():
     client = YandexMarketBase()
     sales = SalesReport(client)
 
-    loaded = sales.run_full_pipeline('2025-11-27', '2025-11-27', 'OFFERS', 'CSV')
+    loaded = sales.run_full_pipeline('2024-11-01', '2024-12-31', 'OFFERS', 'CSV')
 
     if loaded > 0:
         logger.info("✅ Отчет по движению товаров успешно скачан, распакован, трансформирован!")
     else:
         logger.error("❌ Ошибка при получении отчета по движению товаров")
+
+
+def sales_example_missed():
+    """Пример получения отчета по движению товаров"""
+    logger = get_logger(__name__)
+    logger.info("🚀 Запуск генерации отчета по движению товаров...")
+
+    client = YandexMarketBase()
+    sales = SalesReport(client)
+
+    # Вариант 1: Загрузить за конкретную дату (как было)
+    # loaded = sales.run_full_pipeline('2025-11-27', '2025-11-27', 'OFFERS', 'CSV')
+
+    # Вариант 2: Автоматическая дозагрузка пропущенных отчетов
+    stats = sales.run_missing_reports(max_days=300)  # загрузит максимум 3 пропущенных дня
+
+    if stats["loaded"] > 0:
+        logger.info(f"✅ Загружено {stats['loaded']} отчетов за даты: {stats['loaded_dates']}")
+    else:
+        logger.info("📭 Нет отчетов для загрузки или все уже загружены")
 
 
 
@@ -44,7 +64,8 @@ def main():
 
     try:
         logger.info("=== ЗАПУСК ПРИЛОЖЕНИЯ ===")
-        sales_example()
+        #sales_example()
+        sales_example_missed()
         #movement_example()
         logger.info("=== ВЫПОЛНЕНИЕ ЗАВЕРШЕНО ===")
 
