@@ -47,7 +47,7 @@ def sales_example_missed():
     # loaded = sales.run_full_pipeline('2025-11-27', '2025-11-27', 'OFFERS', 'CSV')
 
     # Вариант 2: Автоматическая дозагрузка пропущенных отчетов
-    stats = sales.run_missing_reports(max_days=300)  # загрузит максимум 3 пропущенных дня
+    stats = sales.run_missing_reports()  # загрузит максимум 3 пропущенных дня
 
     if stats["loaded"] > 0:
         logger.info(f"✅ Загружено {stats['loaded']} отчетов за даты: {stats['loaded_dates']}")

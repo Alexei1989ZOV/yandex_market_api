@@ -4,7 +4,7 @@ from database.models import GoodsMovementModel, Sales
 from pathlib import Path
 from typing import Optional, List, Dict
 from datetime import datetime, date
-
+from decorators import rate_limit
 
 
 class SalesReport(BaseReportManager):
@@ -59,6 +59,7 @@ class SalesReport(BaseReportManager):
 
         return success
 
+    @rate_limit()
     def run_full_pipeline(self, date_from: str, date_to: str, grouping: str = "OFFERS", format_: str = "CSV") -> int:
         try:
             params = {"format": format_}
@@ -102,17 +103,19 @@ class SalesReport(BaseReportManager):
             self.logger.error(f"❌ Ошибка в пайплайне: {e}")
             raise
 
+
     def run_missing_reports(
             self,
-            max_days: int = 20,
-            grouping: str = "OFFERS"
+            grouping: str = "OFFERS",
+            max_days_per_run: int = None  # Опциональное ограничение
     ) -> dict:
         """
         Автоматически находит и загружает пропущенные отчеты.
+        Лимиты API контролируются декоратором @rate_limit.
 
         Args:
-            max_days: максимальное количество дней для загрузки за один раз
             grouping: группировка данных
+            max_days_per_run: максимум дней для загрузки за один запуск
 
         Returns:
             dict: статистика загрузки
@@ -122,6 +125,7 @@ class SalesReport(BaseReportManager):
             "loaded": 0,
             "failed": 0,
             "loaded_dates": [],
+            "failed_dates": [],
             "errors": []
         }
 
@@ -136,16 +140,25 @@ class SalesReport(BaseReportManager):
 
             self.logger.info(f"📋 Найдено {len(missing_dates)} пропущенных дат")
 
-            # 2. Ограничиваем количество для одной загрузки
-            dates_to_load = missing_dates[:max_days]
-            self.logger.info(f"Будем загружать {len(dates_to_load)} дат: {dates_to_load}")
+            # 2. Ограничиваем количество дней если нужно
+            if max_days_per_run and len(missing_dates) > max_days_per_run:
+                dates_to_load = missing_dates[:max_days_per_run]
+                remaining = len(missing_dates) - max_days_per_run
+                self.logger.info(
+                    f"Ограничение: загрузим {max_days_per_run} из {len(missing_dates)} дней. "
+                    f"Осталось: {remaining}"
+                )
+            else:
+                dates_to_load = missing_dates
 
-            # 3. Загружаем каждую дату
+            # 3. Загружаем отчеты
+            self.logger.info(f"🚀 Начинаем загрузку {len(dates_to_load)} отчетов...")
+
             for date_str in dates_to_load:
                 try:
-                    self.logger.info(f"🚀 Загрузка отчета за {date_str}")
+                    self.logger.info(f"📅 Загрузка отчета за {date_str}")
 
-                    # Используем существующий метод
+                    # Декоратор @rate_limit сам позаботится об ожидании!
                     loaded = self.run_full_pipeline(
                         date_from=date_str,
                         date_to=date_str,
@@ -159,26 +172,31 @@ class SalesReport(BaseReportManager):
                         self.logger.info(f"✅ Отчет за {date_str} загружен ({loaded} записей)")
                     else:
                         stats["failed"] += 1
+                        stats["failed_dates"].append(date_str)
                         stats["errors"].append(f"{date_str}: нет данных")
                         self.logger.warning(f"⚠️ Нет данных за {date_str}")
 
                 except Exception as e:
                     stats["failed"] += 1
-                    stats["errors"].append(f"{date_str}: {str(e)}")
+                    stats["failed_dates"].append(date_str)
+                    error_msg = f"{date_str}: {str(e)}"
+                    stats["errors"].append(error_msg)
                     self.logger.error(f"❌ Ошибка загрузки отчета за {date_str}: {e}")
                     # Продолжаем со следующей датой
 
             # 4. Итоги
-            self.logger.info(f"""
+            summary_msg = f"""
             {'=' * 50}
             ИТОГИ АВТОЗАГРУЗКИ:
             {'=' * 50}
-            Всего пропущенных: {stats['total_missing']}
-            Попытка загрузки: {len(dates_to_load)}
+            Всего пропущенных дат: {stats['total_missing']}
+            Обработано: {len(dates_to_load)}
             Успешно: {stats['loaded']}
-            Ошибок: {stats['failed']}
+            С ошибками: {stats['failed']}
             {'=' * 50}
-            """)
+            """
+
+            self.logger.info(summary_msg)
 
             return stats
 
